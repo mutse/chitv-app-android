@@ -25,8 +25,14 @@ class VideoRepository {
     required List<VodSource> sources,
     required String query,
     required bool adultFilterEnabled,
+    Set<String>? sourceIds,
+    bool deduplicate = true,
   }) async {
-    final enabled = sources.where((s) => s.enabled).toList();
+    final enabled = sources.where((s) {
+      if (!s.enabled) return false;
+      if (sourceIds == null || sourceIds.isEmpty) return true;
+      return sourceIds.contains(s.id);
+    }).toList();
 
     final futures = enabled.map((source) async {
       try {
@@ -43,13 +49,16 @@ class VideoRepository {
     final chunks = await Future.wait(futures);
     final merged = chunks.expand((e) => e).toList();
 
-    final seen = <String>{};
-    final dedup = merged.where((item) {
-      final key = item.title.trim().toLowerCase();
-      if (seen.contains(key)) return false;
-      seen.add(key);
-      return true;
-    }).toList();
+    List<VideoItem> dedup = merged;
+    if (deduplicate) {
+      final seen = <String>{};
+      dedup = merged.where((item) {
+        final key = item.title.trim().toLowerCase();
+        if (seen.contains(key)) return false;
+        seen.add(key);
+        return true;
+      }).toList();
+    }
 
     return _filter.filterVideos(dedup, adultFilterEnabled: adultFilterEnabled);
   }

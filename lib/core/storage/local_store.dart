@@ -12,6 +12,7 @@ class LocalStore {
   static const _favoritesKey = 'favorites';
   static const _historyKey = 'playback_history';
   static const _settingsKey = 'app_settings';
+  static const _searchHistoryKey = 'search_history';
 
   Future<List<VodSource>> loadSources() async {
     final sp = await SharedPreferences.getInstance();
@@ -80,6 +81,16 @@ class LocalStore {
   Future<void> saveSettings(AppSettings settings) async {
     final sp = await SharedPreferences.getInstance();
     await sp.setString(_settingsKey, jsonEncode(settings.toJson()));
+  }
+
+  Future<List<String>> loadSearchHistory() async {
+    final sp = await SharedPreferences.getInstance();
+    return sp.getStringList(_searchHistoryKey) ?? const [];
+  }
+
+  Future<void> saveSearchHistory(List<String> values) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setStringList(_searchHistoryKey, values);
   }
 
   List<VodSource> get _defaultSources => const [

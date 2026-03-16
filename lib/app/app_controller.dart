@@ -23,15 +23,18 @@ class AppController extends ChangeNotifier {
 
   bool initializing = true;
   bool searching = false;
+  bool loadingHome = false;
   bool probingSources = false;
   String? error;
 
+  List<VideoItem> homeVideos = const [];
   List<VodSource> sources = const [];
   Map<String, int?> sourceLatencyMs = const {};
   List<VideoItem> searchResults = const [];
   List<VideoItem> favorites = const [];
   List<PlaybackHistoryItem> history = const [];
   AppSettings settings = const AppSettings();
+  List<String> recentSearches = const [];
   int qosSessionCount = 0;
   int qosErrorCount = 0;
   int qosBufferEvents = 0;
@@ -47,13 +50,15 @@ class AppController extends ChangeNotifier {
     favorites = await _localStore.loadFavorites();
     history = await _localStore.loadHistory();
     settings = await _localStore.loadSettings();
+    recentSearches = await _localStore.loadSearchHistory();
+    await loadHomeVideos();
     await refreshSourceSpeeds(silent: true);
 
     initializing = false;
     notifyListeners();
   }
 
-  Future<void> search(String query) async {
+  Future<void> search(String query, {Set<String>? sourceIds}) async {
     if (query.trim().isEmpty) return;
     searching = true;
     error = null;
@@ -64,12 +69,33 @@ class AppController extends ChangeNotifier {
         sources: sources,
         query: query.trim(),
         adultFilterEnabled: settings.adultFilterEnabled,
+        sourceIds: sourceIds,
       );
+      await _saveSearchHistory(query.trim());
     } catch (e) {
       error = '$e';
     }
 
     searching = false;
+    notifyListeners();
+  }
+
+  Future<void> loadHomeVideos({Set<String>? sourceIds}) async {
+    loadingHome = true;
+    notifyListeners();
+
+    try {
+      homeVideos = await _repository.searchAcrossSources(
+        sources: sources,
+        query: '',
+        adultFilterEnabled: settings.adultFilterEnabled,
+        sourceIds: sourceIds,
+      );
+    } catch (_) {
+      homeVideos = const [];
+    }
+
+    loadingHome = false;
     notifyListeners();
   }
 
@@ -280,5 +306,11 @@ class AppController extends ChangeNotifier {
       return ams.compareTo(bms);
     });
     return alternatives;
+  }
+
+  Future<void> _saveSearchHistory(String query) async {
+    final next = [query, ...recentSearches.where((e) => e != query)].take(12).toList();
+    recentSearches = next;
+    await _localStore.saveSearchHistory(next);
   }
 }
