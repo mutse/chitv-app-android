@@ -313,4 +313,10 @@ class AppController extends ChangeNotifier {
     recentSearches = next;
     await _localStore.saveSearchHistory(next);
   }
+
+  Future<void> clearSearchHistory() async {
+    recentSearches = const [];
+    await _localStore.saveSearchHistory(const []);
+    notifyListeners();
+  }
 }

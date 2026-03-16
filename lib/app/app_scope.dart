@@ -6,8 +6,8 @@ class AppScope extends InheritedNotifier<AppController> {
   const AppScope({
     super.key,
     required AppController controller,
-    required Widget child,
-  }) : super(notifier: controller, child: child);
+    required super.child,
+  }) : super(notifier: controller);
 
   static AppController of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();

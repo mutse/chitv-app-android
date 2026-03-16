@@ -45,8 +45,11 @@
 ## 运行
 1. 安装 Flutter 3.22+ 与 Dart 3.3+
 2. 执行：
-   - `flutter pub get`
-   - `flutter run -d android`
+  - `flutter pub get`
+  - `flutter run -d android`
+
+## Logo
+- 已接入 `assets/logo.png` 作为 Flutter 层应用 logo（首页导航栏显示）。
 
 ## 说明
 当前环境没有安装 Flutter SDK，本次先手工完成架构与代码落地；安装 SDK 后即可编译调试。
