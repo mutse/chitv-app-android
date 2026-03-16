@@ -1,0 +1,24 @@
+import 'package:flutter/widgets.dart';
+
+import 'app_controller.dart';
+
+class AppScope extends InheritedNotifier<AppController> {
+  const AppScope({
+    super.key,
+    required AppController controller,
+    required Widget child,
+  }) : super(notifier: controller, child: child);
+
+  static AppController of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();
+    assert(scope != null, 'AppScope not found in widget tree');
+    return scope!.notifier!;
+  }
+
+  static AppController read(BuildContext context) {
+    final element = context.getElementForInheritedWidgetOfExactType<AppScope>();
+    final widget = element?.widget;
+    assert(widget != null, 'AppScope not found in widget tree');
+    return (widget as AppScope).notifier!;
+  }
+}
