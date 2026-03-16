@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../core/models/alternative_source_candidate.dart';
 import '../core/models/episode_item.dart';
 import '../core/models/video_item.dart';
 import '../core/models/vod_source.dart';
@@ -72,7 +73,7 @@ class VideoRepository {
     return _api.probeLatency(baseUrl: source.apiUrl);
   }
 
-  Future<List<(VodSource source, VideoItem video)>> findAlternatives({
+  Future<List<AlternativeSourceCandidate>> findAlternatives({
     required List<VodSource> sources,
     required VideoItem current,
     required bool adultFilterEnabled,
@@ -82,7 +83,7 @@ class VideoRepository {
         .toList();
     final normalizedTarget = _normalizeTitle(current.title);
 
-    final matches = <(VodSource source, VideoItem video)>[];
+    final matches = <AlternativeSourceCandidate>[];
     for (final source in enabled) {
       try {
         final candidates = await _api.search(
@@ -109,7 +110,7 @@ class VideoRepository {
         }
 
         if (best != null) {
-          matches.add((source: source, video: best));
+          matches.add(AlternativeSourceCandidate(source: source, video: best));
         }
       } catch (_) {
         continue;

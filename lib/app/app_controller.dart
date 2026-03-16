@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/models/alternative_source_candidate.dart';
 import '../core/models/app_settings.dart';
 import '../core/models/episode_item.dart';
 import '../core/models/playback_history_item.dart';
@@ -77,7 +78,7 @@ class AppController extends ChangeNotifier {
       final result = await _repository.fetchDetail(sources: sources, video: item);
       return (result.$1, result.$2);
     } catch (_) {
-      return (item, const []);
+      return (item, <EpisodeItem>[]);
     }
   }
 
@@ -264,7 +265,7 @@ class AppController extends ChangeNotifier {
   int get qosAvgStartupMs =>
       qosSessionCount == 0 ? 0 : (qosStartupTotalMs / qosSessionCount).round();
 
-  Future<List<(VodSource source, VideoItem video)>> searchAlternativeSources(
+  Future<List<AlternativeSourceCandidate>> searchAlternativeSources(
     VideoItem current,
   ) async {
     final alternatives = await _repository.findAlternatives(

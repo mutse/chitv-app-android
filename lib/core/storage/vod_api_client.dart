@@ -90,7 +90,7 @@ class VodApiClient {
 
   String _firstPlayable(String raw) {
     if (raw.isEmpty) return '';
-    final src = raw.split('$$$').first;
+    final src = raw.split(r'$$$').first;
     final ep = src.split('#').first;
     final pair = ep.split(r'$');
     if (pair.length < 2) return '';

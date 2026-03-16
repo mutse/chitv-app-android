@@ -4,7 +4,7 @@ class EpisodeParser {
   List<EpisodeItem> parse(String raw) {
     if (raw.trim().isEmpty) return const [];
 
-    final firstSource = raw.split('$$$').first;
+    final firstSource = raw.split(r'$$$').first;
     final parts = firstSource.split('#');
 
     final result = <EpisodeItem>[];
