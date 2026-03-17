@@ -7,6 +7,18 @@ import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
+import 'hls_webview_player.dart';
+
+/// Video playback engine selection.
+enum _PlayerEngine {
+  /// Native ExoPlayer via `video_player` plugin.
+  native,
+
+  /// WebView with HLS.js -- same approach used by LibreTV.
+  /// Serves as fallback when native player fails on certain HLS streams
+  /// (e.g. MediaCodecVideoRenderer error on video/mp2t).
+  hlsWebView,
+}
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
@@ -39,6 +51,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _historyTimer;
   int _lastSavedPosition = -1;
 
+  /// Current playback engine.
+  _PlayerEngine _engine = _PlayerEngine.native;
+
+  /// Whether we already tried falling back to WebView player.
+  bool _triedFallback = false;
+
+  /// Key for the HLS WebView player (used to force rebuild on URL change).
+  Key _hlsPlayerKey = UniqueKey();
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +73,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _error = null;
       _endHandled = false;
     });
+
+    // If we already know native player fails for this type, go directly to WebView.
+    if (_engine == _PlayerEngine.hlsWebView) {
+      _initHlsWebView(url, startedAt);
+      return;
+    }
 
     try {
       final old = _player;
@@ -92,6 +119,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
       controller.addListener(_watchEnded);
       controller.addListener(_watchBuffering);
+      controller.addListener(_watchNativeError);
       await controller.play();
 
       if (!mounted) return;
@@ -106,18 +134,88 @@ class _PlayerScreenState extends State<PlayerScreen> {
       unawaited(AppScope.read(context).addHistory(widget.item));
     } catch (e) {
       if (!mounted) return;
+
+      // Before retry limit, do normal retries.
       if (_retry < 2) {
         _retry += 1;
         AppScope.read(context).recordPlaybackRetry();
         await Future<void>.delayed(Duration(milliseconds: 400 * _retry));
         return _initialize(url);
       }
+
+      // All native retries failed -- fall back to HLS.js WebView player
+      // (same approach as LibreTV) if the URL looks like an HLS stream.
+      if (!_triedFallback && _isLikelyHlsUrl(url)) {
+        _triedFallback = true;
+        _fallbackToHlsWebView(url, startedAt);
+        return;
+      }
+
       AppScope.read(context).recordPlaybackError();
       setState(() {
         _loading = false;
-        _error = '$e';
+        _error = '播放失败: $e';
       });
     }
+  }
+
+  /// Watch for native player errors after initialization (e.g. MediaCodec
+  /// renderer errors that occur mid-playback).
+  void _watchNativeError() {
+    final c = _player;
+    if (c == null) return;
+    final v = c.value;
+    if (v.hasError && !_triedFallback) {
+      final errorDesc = v.errorDescription ?? '';
+      // MediaCodecVideoRenderer or similar error -- fall back
+      if (errorDesc.contains('MediaCodec') ||
+          errorDesc.contains('VideoRenderer') ||
+          errorDesc.contains('mp2t')) {
+        _triedFallback = true;
+        _fallbackToHlsWebView(widget.item.url, DateTime.now());
+      }
+    }
+  }
+
+  /// Switch to HLS.js WebView player (LibreTV approach).
+  void _fallbackToHlsWebView(String url, DateTime startedAt) {
+    debugPrint('[PlayerScreen] Native player failed, falling back to HLS.js WebView player');
+    _player?.removeListener(_watchEnded);
+    _player?.removeListener(_watchBuffering);
+    _player?.removeListener(_watchNativeError);
+    _player?.dispose();
+    _player = null;
+
+    setState(() {
+      _engine = _PlayerEngine.hlsWebView;
+      _loading = false;
+      _error = null;
+      _hlsPlayerKey = UniqueKey();
+    });
+
+    _sessionStartupMs = DateTime.now().difference(startedAt).inMilliseconds;
+    AppScope.read(context).recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
+    _startHistoryTracking();
+    unawaited(AppScope.read(context).addHistory(widget.item));
+  }
+
+  /// Initialize directly with HLS WebView (skip native player).
+  void _initHlsWebView(String url, DateTime startedAt) {
+    setState(() {
+      _loading = false;
+      _error = null;
+      _hlsPlayerKey = UniqueKey();
+    });
+
+    _sessionStartupMs = DateTime.now().difference(startedAt).inMilliseconds;
+    AppScope.read(context).recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
+    _startHistoryTracking();
+    unawaited(AppScope.read(context).addHistory(widget.item));
+  }
+
+  bool _isLikelyHlsUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('.m3u8') || lower.contains('m3u8') || lower.contains('/hls/');
   }
 
   void _watchEnded() {
@@ -170,6 +268,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _persistHistoryPosition();
     _player?.removeListener(_watchEnded);
     _player?.removeListener(_watchBuffering);
+    _player?.removeListener(_watchNativeError);
     _player?.dispose();
     super.dispose();
   }
@@ -182,6 +281,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
       appBar: AppBar(
         title: Text(widget.item.title),
         actions: [
+          // Engine badge
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _engine == _PlayerEngine.hlsWebView
+                      ? Colors.orange.withValues(alpha: 0.2)
+                      : Colors.green.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  _engine == _PlayerEngine.hlsWebView ? 'HLS.js' : 'Native',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: _engine == _PlayerEngine.hlsWebView
+                        ? Colors.orange
+                        : Colors.green,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (_engine == _PlayerEngine.native && _error != null)
+            IconButton(
+              icon: const Icon(Icons.web),
+              tooltip: '切换到WebView播放器',
+              onPressed: () {
+                _triedFallback = true;
+                _retry = 0;
+                _fallbackToHlsWebView(widget.item.url, DateTime.now());
+              },
+            ),
+          if (_engine == _PlayerEngine.hlsWebView)
+            IconButton(
+              icon: const Icon(Icons.videocam),
+              tooltip: '切换到原生播放器',
+              onPressed: () {
+                _player?.dispose();
+                _player = null;
+                _triedFallback = false;
+                _retry = 0;
+                setState(() {
+                  _engine = _PlayerEngine.native;
+                });
+                _initialize(widget.item.url);
+              },
+            ),
           if (app.settings.subtitleEnabled && app.settings.defaultSubtitleUrl.isNotEmpty)
             const Padding(
               padding: EdgeInsets.only(right: 12),
@@ -198,34 +346,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('播放失败: $_error'),
-                      const SizedBox(height: 10),
-                      FilledButton(
-                        onPressed: () {
-                          _retry = 0;
-                          _initialize(widget.item.url);
-                        },
-                        child: const Text('重试'),
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        const SizedBox(height: 16),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () {
+                                _retry = 0;
+                                _triedFallback = false;
+                                setState(() => _engine = _PlayerEngine.native);
+                                _initialize(widget.item.url);
+                              },
+                              icon: const Icon(Icons.refresh, size: 16),
+                              label: const Text('重试'),
+                            ),
+                            if (!_triedFallback || _engine != _PlayerEngine.hlsWebView)
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  _triedFallback = true;
+                                  _retry = 0;
+                                  _fallbackToHlsWebView(widget.item.url, DateTime.now());
+                                },
+                                icon: const Icon(Icons.web, size: 16),
+                                label: const Text('WebView播放'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : Column(
                   children: [
                     Expanded(
                       child: Center(
-                        child: Stack(
-                          children: [
-                            AspectRatio(
-                              aspectRatio: _player!.value.aspectRatio,
-                              child: VideoPlayer(_player!),
-                            ),
-                            if (_showQos) _buildQosPanel(app),
-                          ],
-                        ),
+                        child: _engine == _PlayerEngine.hlsWebView
+                            ? _buildHlsWebViewPlayer()
+                            : _buildNativePlayer(app),
                       ),
                     ),
                     if (widget.currentEpisodeIndex >= 0 && widget.episodes.isNotEmpty)
@@ -258,9 +427,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                   ],
                 ),
-      floatingActionButton: _player == null
-          ? null
-          : FloatingActionButton(
+      floatingActionButton: _engine == _PlayerEngine.native && _player != null
+          ? FloatingActionButton(
               onPressed: () {
                 final value = _player!.value;
                 if (value.isPlaying) {
@@ -273,7 +441,52 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: Icon(
                 _player!.value.isPlaying ? Icons.pause : Icons.play_arrow,
               ),
-            ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildNativePlayer(AppController app) {
+    return Stack(
+      children: [
+        AspectRatio(
+          aspectRatio: _player!.value.aspectRatio,
+          child: VideoPlayer(_player!),
+        ),
+        if (_showQos) _buildQosPanel(app),
+      ],
+    );
+  }
+
+  Widget _buildHlsWebViewPlayer() {
+    final app = AppScope.of(context);
+    return Stack(
+      children: [
+        HlsWebViewPlayer(
+          key: _hlsPlayerKey,
+          url: widget.item.url,
+          title: widget.item.title,
+          autoPlay: true,
+          onEnded: () {
+            if (!_endHandled) {
+              _endHandled = true;
+              _playNextIfNeeded();
+            }
+          },
+          onPlaying: () {
+            debugPrint('[PlayerScreen] HLS.js WebView player started playing');
+          },
+          onError: (error) {
+            debugPrint('[PlayerScreen] HLS.js WebView player error: $error');
+            if (mounted) {
+              setState(() {
+                _error = 'HLS播放失败: $error';
+              });
+            }
+          },
+        ),
+        if (_showQos) _buildQosPanel(app),
+      ],
     );
   }
 
@@ -311,6 +524,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _persistHistoryPosition() {
+    if (_engine == _PlayerEngine.hlsWebView) {
+      // WebView history persist is handled differently (no sync access).
+      return;
+    }
     final player = _player;
     if (player == null) return;
     final value = player.value;
@@ -341,6 +558,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('QoS Monitor', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('引擎: ${_engine == _PlayerEngine.hlsWebView ? "HLS.js WebView" : "Native ExoPlayer"}'),
               Text('本次启动: ${_sessionStartupMs}ms'),
               Text('累计会话: ${app.qosSessionCount}'),
               Text('平均启动: ${app.qosAvgStartupMs}ms'),
@@ -349,6 +567,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Text('重试次数: ${app.qosRetryCount}'),
               Text('错误次数: ${app.qosErrorCount}'),
               if (value != null) Text('播放中: ${value.isPlaying ? '是' : '否'}'),
+              if (_triedFallback) const Text('已回退: 是', style: TextStyle(color: Colors.orange)),
             ],
           ),
         ),
