@@ -55,26 +55,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       final old = _player;
-      final candidates = _buildUrlCandidates(url);
-      if (candidates.isEmpty) {
+      final rawCandidates = _buildRawPlaybackCandidates(url);
+      if (rawCandidates.isEmpty) {
         throw Exception('无可用播放地址');
       }
 
       VideoPlayerController? controller;
       Object? lastError;
-      for (final uri in candidates) {
-        VideoPlayerController? next;
-        try {
-          next = VideoPlayerController.networkUrl(
-            uri,
-            httpHeaders: _buildPlaybackHeaders(uri),
-          );
-          await next.initialize();
-          controller = next;
+      for (final raw in rawCandidates) {
+        final candidates = _buildUrlCandidates(raw);
+        for (final uri in candidates) {
+          VideoPlayerController? next;
+          try {
+            next = VideoPlayerController.networkUrl(
+              uri,
+              httpHeaders: _buildPlaybackHeaders(uri),
+            );
+            await next.initialize();
+            controller = next;
+            break;
+          } catch (e) {
+            await next?.dispose();
+            lastError = e;
+          }
+        }
+        if (controller != null) {
           break;
-        } catch (e) {
-          await next?.dispose();
-          lastError = e;
         }
       }
 
@@ -397,5 +403,76 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (origin.isNotEmpty) 'Origin': origin,
       if (referer.isNotEmpty) 'Referer': referer,
     };
+  }
+
+  List<String> _buildRawPlaybackCandidates(String primary) {
+    final result = <String>[];
+    final seen = <String>{};
+
+    void add(String value) {
+      final next = value.trim();
+      if (next.isEmpty || seen.contains(next)) return;
+      seen.add(next);
+      result.add(next);
+    }
+
+    add(primary);
+    for (final alt in _extractSameEpisodeAlternativeUrls()) {
+      add(alt);
+    }
+
+    return result;
+  }
+
+  List<String> _extractSameEpisodeAlternativeUrls() {
+    final raw = widget.item.vodPlayUrl?.trim() ?? '';
+    if (raw.isEmpty) return const [];
+
+    final targetIndex = widget.currentEpisodeIndex >= 0 ? widget.currentEpisodeIndex : 0;
+    final output = <String>[];
+
+    final sources = raw.split(r'$$$');
+    for (final source in sources) {
+      final s = source.trim();
+      if (s.isEmpty) continue;
+      final delimiter = s.contains('#') ? '#' : '|';
+      final entries = s.split(delimiter).map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      if (entries.isEmpty) continue;
+
+      final episodeEntry = targetIndex < entries.length ? entries[targetIndex] : entries.first;
+      final parsed = _extractPlayableFromEpisodeEntry(episodeEntry);
+      if (parsed.isNotEmpty) {
+        output.add(parsed);
+      }
+    }
+
+    return output;
+  }
+
+  String _extractPlayableFromEpisodeEntry(String entry) {
+    if (entry.isEmpty) return '';
+    final normalized = entry.split('\u0004').last.trim();
+    if (normalized.isEmpty) return '';
+
+    final splitAt = normalized.indexOf(r'$');
+    var url = splitAt == -1
+        ? normalized
+        : normalized.substring(splitAt + 1).trim();
+
+    url = url.replaceAll(r'\/', '/');
+    if (url.startsWith('//')) {
+      url = 'https:$url';
+    }
+
+    final lower = url.toLowerCase();
+    if (lower.startsWith('http%3a') || lower.startsWith('https%3a')) {
+      try {
+        url = Uri.decodeFull(url);
+      } catch (_) {
+        return url;
+      }
+    }
+
+    return url;
   }
 }
