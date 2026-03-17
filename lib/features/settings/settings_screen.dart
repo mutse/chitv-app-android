@@ -135,26 +135,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        ...app.sources.map((s) => Card(
-              child: ListTile(
-                title: Text(s.name),
-                subtitle: Text(
-                  '${s.apiUrl}\n延迟: ${_formatLatency(app.sourceLatencyMs[s.id])}',
-                ),
-                isThreeLine: true,
-                leading: Switch(
-                  value: s.enabled,
-                  onChanged: (v) => app.upsertSource(s.copyWith(enabled: v)),
-                ),
-                trailing: s.isDefault
-                    ? const Icon(Icons.lock_outline)
-                    : IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => app.deleteSource(s.id),
-                      ),
-                onTap: () => _showSourceEditor(context, source: s),
-              ),
-            )),
+        if (app.sources.isEmpty)
+          const Text('暂无视频源')
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: app.sources.length,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 320,
+              mainAxisExtent: 188,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            itemBuilder: (context, index) {
+              final source = app.sources[index];
+              return _SourceGridCard(
+                source: source,
+                latencyText: _formatLatency(app.sourceLatencyMs[source.id]),
+                onToggleEnabled: (v) => app.upsertSource(source.copyWith(enabled: v)),
+                onEdit: () => _showSourceEditor(context, source: source),
+                onDelete: source.isDefault ? null : () => app.deleteSource(source.id),
+              );
+            },
+          ),
       ],
     );
   }
@@ -301,5 +305,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     nameCtrl.dispose();
     urlCtrl.dispose();
+  }
+}
+
+class _SourceGridCard extends StatelessWidget {
+  const _SourceGridCard({
+    required this.source,
+    required this.latencyText,
+    required this.onToggleEnabled,
+    required this.onEdit,
+    this.onDelete,
+  });
+
+  final VodSource source;
+  final String latencyText;
+  final ValueChanged<bool> onToggleEnabled;
+  final VoidCallback onEdit;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    source.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Switch(
+                  value: source.enabled,
+                  onChanged: onToggleEnabled,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              source.apiUrl,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '延迟: $latencyText',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('编辑'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: onDelete,
+                    icon: Icon(source.isDefault ? Icons.lock_outline : Icons.delete_outline, size: 16),
+                    label: Text(source.isDefault ? '默认源' : '删除'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

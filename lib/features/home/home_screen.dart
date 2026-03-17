@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../core/models/video_item.dart';
-import '../../shared/widgets/video_tile.dart';
 import '../detail/detail_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -471,14 +470,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHistoryTab(BuildContext context) {
     final app = AppScope.of(context);
-    return ListView.builder(
+    if (app.history.isEmpty) {
+      return const Center(child: Text('暂无历史记录'));
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
       itemCount: app.history.length,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 240,
+        mainAxisExtent: 300,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
       itemBuilder: (context, index) {
-        final item = app.history[index];
-        return VideoTile(
-          item: item.video,
-          subtitle: '上次观看: ${item.watchedAt.toLocal()}',
-          onTap: () => _openDetail(context, item.video),
+        final entry = app.history[index];
+        final item = entry.video;
+        return _VideoGridCard(
+          item: item,
+          meta: '上次观看 ${_formatDateTime(entry.watchedAt)}',
+          isFavorite: app.isFavorite(item.id),
+          onFavoriteToggle: () => app.toggleFavorite(item),
+          onPlay: () => _openDetail(context, item),
+          onDetail: () => _openDetail(context, item),
         );
       },
     );
@@ -486,17 +500,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildFavoritesTab(BuildContext context) {
     final app = AppScope.of(context);
-    return ListView.builder(
+    if (app.favorites.isEmpty) {
+      return const Center(child: Text('暂无收藏'));
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
       itemCount: app.favorites.length,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 240,
+        mainAxisExtent: 300,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
       itemBuilder: (context, index) {
         final item = app.favorites[index];
-        return VideoTile(
+        return _VideoGridCard(
           item: item,
-          onTap: () => _openDetail(context, item),
-          trailing: IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => app.toggleFavorite(item),
-          ),
+          isFavorite: true,
+          onFavoriteToggle: () => app.toggleFavorite(item),
+          onPlay: () => _openDetail(context, item),
+          onDetail: () => _openDetail(context, item),
         );
       },
     );
@@ -555,6 +579,7 @@ class _VideoGridCard extends StatelessWidget {
     required this.onFavoriteToggle,
     required this.onPlay,
     required this.onDetail,
+    this.meta,
   });
 
   final VideoItem item;
@@ -562,6 +587,7 @@ class _VideoGridCard extends StatelessWidget {
   final VoidCallback onFavoriteToggle;
   final VoidCallback onPlay;
   final VoidCallback onDetail;
+  final String? meta;
 
   @override
   Widget build(BuildContext context) {
@@ -610,7 +636,7 @@ class _VideoGridCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Text(
-              item.description.isEmpty ? '暂无简介' : item.description,
+              meta ?? (item.description.isEmpty ? '暂无简介' : item.description),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,

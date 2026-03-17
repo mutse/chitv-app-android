@@ -131,12 +131,24 @@ class VodApiClient {
 
   String _firstPlayable(String raw) {
     if (raw.isEmpty) return '';
-    final src = raw.split(r'$$$').first;
-    final ep = src.split('#').first;
-    final pair = ep.split(r'$');
-    if (pair.length < 2) return '';
-    final url = pair.last.trim();
-    return url.startsWith('http') ? url : '';
+    final src = raw.split(r'$$$').first.trim();
+    final delimiter = src.contains('#') ? '#' : '|';
+    final firstPart = src.split(delimiter).first.trim();
+    if (firstPart.isEmpty) return '';
+
+    final splitAt = firstPart.indexOf(r'$');
+    final rawUrl = splitAt == -1
+        ? firstPart
+        : firstPart.substring(splitAt + 1).trim();
+
+    final normalized = rawUrl.replaceAll(r'\/', '/');
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+      return normalized;
+    }
+    if (normalized.startsWith('//')) {
+      return 'https:$normalized';
+    }
+    return '';
   }
 
   Future<int?> probeLatency({required String baseUrl}) async {

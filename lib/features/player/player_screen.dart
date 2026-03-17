@@ -53,8 +53,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       final old = _player;
-      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
-      await controller.initialize();
+      final candidates = _buildUrlCandidates(url);
+      if (candidates.isEmpty) {
+        throw Exception('无可用播放地址');
+      }
+
+      VideoPlayerController? controller;
+      Object? lastError;
+      for (final uri in candidates) {
+        VideoPlayerController? next;
+        try {
+          next = VideoPlayerController.networkUrl(
+            uri,
+            httpHeaders: _buildPlaybackHeaders(uri),
+          );
+          await next.initialize();
+          controller = next;
+          break;
+        } catch (e) {
+          await next?.dispose();
+          lastError = e;
+        }
+      }
+
+      if (controller == null) {
+        throw lastError ?? Exception('播放器初始化失败');
+      }
+
       await old?.dispose();
 
       controller.addListener(_watchEnded);
@@ -297,5 +322,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       ),
     );
+  }
+
+  List<Uri> _buildUrlCandidates(String raw) {
+    final normalized = raw.trim();
+    if (normalized.isEmpty) return const [];
+
+    final values = <String>[
+      normalized,
+      normalized.replaceAll(r'\/', '/'),
+      if (normalized.startsWith('//')) 'https:$normalized',
+    ];
+
+    final unique = <String>{};
+    final result = <Uri>[];
+    for (final value in values) {
+      if (value.isEmpty || unique.contains(value)) continue;
+      unique.add(value);
+
+      final parsed = Uri.tryParse(value);
+      if (parsed != null && parsed.hasScheme && parsed.host.isNotEmpty) {
+        result.add(parsed);
+      }
+
+      final encodedValue = Uri.encodeFull(value);
+      if (!unique.contains(encodedValue)) {
+        unique.add(encodedValue);
+        final encodedParsed = Uri.tryParse(encodedValue);
+        if (encodedParsed != null &&
+            encodedParsed.hasScheme &&
+            encodedParsed.host.isNotEmpty) {
+          result.add(encodedParsed);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  Map<String, String> _buildPlaybackHeaders(Uri uri) {
+    final origin = uri.hasScheme && uri.host.isNotEmpty ? '${uri.scheme}://${uri.host}' : '';
+    final referer = origin.isEmpty ? '' : '$origin/';
+
+    return {
+      'User-Agent':
+          'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+      'Accept': '*/*',
+      if (origin.isNotEmpty) 'Origin': origin,
+      if (referer.isNotEmpty) 'Referer': referer,
+    };
   }
 }

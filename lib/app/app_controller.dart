@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -46,16 +47,39 @@ class AppController extends ChangeNotifier {
     initializing = true;
     notifyListeners();
 
-    sources = await _localStore.loadSources();
-    favorites = await _localStore.loadFavorites();
-    history = await _localStore.loadHistory();
-    settings = await _localStore.loadSettings();
-    recentSearches = await _localStore.loadSearchHistory();
-    await loadHomeVideos();
-    await refreshSourceSpeeds(silent: true);
+    try {
+      final loaded = await Future.wait<Object>([
+        _localStore.loadSources(),
+        _localStore.loadFavorites(),
+        _localStore.loadHistory(),
+        _localStore.loadSettings(),
+        _localStore.loadSearchHistory(),
+      ]);
+
+      sources = loaded[0] as List<VodSource>;
+      favorites = loaded[1] as List<VideoItem>;
+      history = loaded[2] as List<PlaybackHistoryItem>;
+      settings = loaded[3] as AppSettings;
+      recentSearches = loaded[4] as List<String>;
+    } catch (e) {
+      error = '初始化失败: $e';
+    }
 
     initializing = false;
     notifyListeners();
+
+    unawaited(_warmUpHomeResources());
+  }
+
+  Future<void> _warmUpHomeResources() async {
+    try {
+      await Future.wait<void>([
+        loadHomeVideos(),
+        refreshSourceSpeeds(silent: true),
+      ]);
+    } catch (_) {
+      // Warm-up runs in background; UI remains usable even when it fails.
+    }
   }
 
   Future<void> search(String query, {Set<String>? sourceIds}) async {

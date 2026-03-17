@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import 'app/app.dart';
@@ -20,6 +22,6 @@ Future<void> main() async {
     ),
   );
 
-  await controller.init();
   runApp(ChiTvApp(controller: controller));
+  unawaited(controller.init());
 }
