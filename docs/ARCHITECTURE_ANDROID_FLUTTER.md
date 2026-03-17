@@ -18,7 +18,7 @@
 - 搜索: 支持关键词在启用数据源上聚合搜索
 - 数据源: 默认源 + 自定义源增删改开关 + 持久化
 - 详情: 拉取视频详情并解析 `vod_play_url` 生成分集
-- 播放: 使用 Android 原生底层播放器能力（Flutter `video_player`）播放 m3u8/mp4
+- 播放: 使用 Android 原生底层播放器能力（`better_native_video_player`）播放 m3u8/mp4
 - 历史/收藏:
   - 播放历史（含最近观看时间）
   - 收藏列表

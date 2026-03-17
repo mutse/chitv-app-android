@@ -95,13 +95,6 @@ class LocalStore {
 
   List<VodSource> get _defaultSources => const [
     VodSource(
-      id: 'heimuer',
-      name: 'HeiMuer',
-      apiUrl: 'https://heimuer.tv/api.php/provide/vod/',
-      enabled: true,
-      isDefault: true,
-    ),
-    VodSource(
       id: 'bfzy',
       name: 'BFZY',
       apiUrl: 'https://bfzyapi.com/api.php/provide/vod/',

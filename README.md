@@ -5,7 +5,7 @@
 ## 已实现（Phase 1）
 - 多源聚合搜索（启用源并发）
 - 视频详情 + 分集解析（`vod_play_url`）
-- Android 播放器页面（`video_player`）
+- Android 播放器页面（`better_native_video_player`）
 - 播放历史（本地持久化）
 - 收藏功能（本地持久化）
 - 设置页：成人内容过滤、自动连播开关、视频源管理

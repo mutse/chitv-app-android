@@ -1,24 +1,12 @@
 import 'dart:async';
 
+import 'package:better_native_video_player/better_native_video_player.dart';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
-import 'hls_webview_player.dart';
-
-/// Video playback engine selection.
-enum _PlayerEngine {
-  /// Native ExoPlayer via `video_player` plugin.
-  native,
-
-  /// WebView with HLS.js -- same approach used by LibreTV.
-  /// Serves as fallback when native player fails on certain HLS streams
-  /// (e.g. MediaCodecVideoRenderer error on video/mp2t).
-  hlsWebView,
-}
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
@@ -39,26 +27,22 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  VideoPlayerController? _player;
+  /// Unique player ID – we use the hash of the widget to avoid collisions.
+  static int _nextPlayerId = 1;
+
+  NativeVideoPlayerController? _controller;
   bool _loading = true;
   String? _error;
   bool _endHandled = false;
   int _retry = 0;
   bool _showQos = false;
-  bool _wasBuffering = false;
-  DateTime? _bufferingSince;
   int _sessionStartupMs = 0;
   Timer? _historyTimer;
   int _lastSavedPosition = -1;
 
-  /// Current playback engine.
-  _PlayerEngine _engine = _PlayerEngine.native;
-
-  /// Whether we already tried falling back to WebView player.
-  bool _triedFallback = false;
-
-  /// Key for the HLS WebView player (used to force rebuild on URL change).
-  Key _hlsPlayerKey = UniqueKey();
+  /// Subscriptions to player streams.
+  StreamSubscription<PlayerActivityState>? _activitySub;
+  StreamSubscription<Duration>? _positionSub;
 
   @override
   void initState() {
@@ -74,35 +58,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _endHandled = false;
     });
 
-    // If we already know native player fails for this type, go directly to WebView.
-    if (_engine == _PlayerEngine.hlsWebView) {
-      _initHlsWebView(url, startedAt);
-      return;
-    }
-
     try {
-      final old = _player;
+      // Dispose previous controller if exists.
+      await _disposeController();
+
       final rawCandidates = _buildRawPlaybackCandidates(url);
       if (rawCandidates.isEmpty) {
         throw Exception('无可用播放地址');
       }
 
-      VideoPlayerController? controller;
+      NativeVideoPlayerController? controller;
       Object? lastError;
+
       for (final raw in rawCandidates) {
         final candidates = _buildUrlCandidates(raw);
         for (final uri in candidates) {
-          VideoPlayerController? next;
+          NativeVideoPlayerController? next;
           try {
-            next = VideoPlayerController.networkUrl(
-              uri,
-              httpHeaders: _buildPlaybackHeaders(uri),
+            final playerId = _nextPlayerId++;
+            next = NativeVideoPlayerController(
+              id: playerId,
+              autoPlay: true,
+              showNativeControls: true,
             );
+
             await next.initialize();
+            await next.loadUrl(
+              url: uri.toString(),
+              headers: _buildPlaybackHeaders(uri),
+            );
+
             controller = next;
             break;
           } catch (e) {
-            await next?.dispose();
+            try {
+              await next?.dispose();
+            } catch (_) {}
             lastError = e;
           }
         }
@@ -115,18 +106,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         throw lastError ?? Exception('播放器初始化失败');
       }
 
-      await old?.dispose();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
 
-      controller.addListener(_watchEnded);
-      controller.addListener(_watchBuffering);
-      controller.addListener(_watchNativeError);
-      await controller.play();
+      _controller = controller;
+      _listenToPlayer();
 
-      if (!mounted) return;
       _sessionStartupMs = DateTime.now().difference(startedAt).inMilliseconds;
       AppScope.read(context).recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
       setState(() {
-        _player = controller;
         _loading = false;
       });
 
@@ -135,20 +125,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      // Before retry limit, do normal retries.
       if (_retry < 2) {
         _retry += 1;
         AppScope.read(context).recordPlaybackRetry();
         await Future<void>.delayed(Duration(milliseconds: 400 * _retry));
         return _initialize(url);
-      }
-
-      // All native retries failed -- fall back to HLS.js WebView player
-      // (same approach as LibreTV) if the URL looks like an HLS stream.
-      if (!_triedFallback && _isLikelyHlsUrl(url)) {
-        _triedFallback = true;
-        _fallbackToHlsWebView(url, startedAt);
-        return;
       }
 
       AppScope.read(context).recordPlaybackError();
@@ -159,77 +140,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  /// Watch for native player errors after initialization (e.g. MediaCodec
-  /// renderer errors that occur mid-playback).
-  void _watchNativeError() {
-    final c = _player;
+  /// Subscribe to player activity and position streams.
+  void _listenToPlayer() {
+    final c = _controller;
     if (c == null) return;
-    final v = c.value;
-    if (v.hasError && !_triedFallback) {
-      final errorDesc = v.errorDescription ?? '';
-      // MediaCodecVideoRenderer or similar error -- fall back
-      if (errorDesc.contains('MediaCodec') ||
-          errorDesc.contains('VideoRenderer') ||
-          errorDesc.contains('mp2t')) {
-        _triedFallback = true;
-        _fallbackToHlsWebView(widget.item.url, DateTime.now());
+
+    _activitySub = c.playerStateStream.listen((state) {
+      if (!mounted) return;
+
+      if (state == PlayerActivityState.completed && !_endHandled) {
+        _endHandled = true;
+        _playNextIfNeeded();
       }
-    }
-  }
 
-  /// Switch to HLS.js WebView player (LibreTV approach).
-  void _fallbackToHlsWebView(String url, DateTime startedAt) {
-    debugPrint('[PlayerScreen] Native player failed, falling back to HLS.js WebView player');
-    _player?.removeListener(_watchEnded);
-    _player?.removeListener(_watchBuffering);
-    _player?.removeListener(_watchNativeError);
-    _player?.dispose();
-    _player = null;
+      if (state == PlayerActivityState.error) {
+        debugPrint('[PlayerScreen] Player error detected');
+        // Trigger rebuild so QoS panel can update.
+        setState(() {});
+      }
 
-    setState(() {
-      _engine = _PlayerEngine.hlsWebView;
-      _loading = false;
-      _error = null;
-      _hlsPlayerKey = UniqueKey();
+      // Trigger rebuild for play/pause state changes.
+      if (state == PlayerActivityState.playing ||
+          state == PlayerActivityState.paused) {
+        setState(() {});
+      }
     });
 
-    _sessionStartupMs = DateTime.now().difference(startedAt).inMilliseconds;
-    AppScope.read(context).recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
-    _startHistoryTracking();
-    unawaited(AppScope.read(context).addHistory(widget.item));
-  }
-
-  /// Initialize directly with HLS WebView (skip native player).
-  void _initHlsWebView(String url, DateTime startedAt) {
-    setState(() {
-      _loading = false;
-      _error = null;
-      _hlsPlayerKey = UniqueKey();
+    _positionSub = c.positionStream.listen((pos) {
+      // Position stream is used for history tracking (handled by timer),
+      // but we can trigger a rebuild if QoS panel is visible.
+      if (_showQos && mounted) {
+        setState(() {});
+      }
     });
-
-    _sessionStartupMs = DateTime.now().difference(startedAt).inMilliseconds;
-    AppScope.read(context).recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
-    _startHistoryTracking();
-    unawaited(AppScope.read(context).addHistory(widget.item));
-  }
-
-  bool _isLikelyHlsUrl(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('.m3u8') || lower.contains('m3u8') || lower.contains('/hls/');
-  }
-
-  void _watchEnded() {
-    final c = _player;
-    if (c == null) return;
-    final v = c.value;
-    if (!v.isInitialized || v.hasError) return;
-    if (v.duration.inMilliseconds <= 0) return;
-
-    final remain = v.duration - v.position;
-    if (remain.inMilliseconds <= 300 && !_endHandled) {
-      _endHandled = true;
-      _playNextIfNeeded();
-    }
   }
 
   void _playNextIfNeeded() {
@@ -242,35 +185,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _openEpisode(nextIndex);
   }
 
-  void _watchBuffering() {
-    final c = _player;
-    if (c == null) return;
-    final nowBuffering = c.value.isBuffering;
-    if (!_wasBuffering && nowBuffering) {
-      _bufferingSince = DateTime.now();
-      _wasBuffering = true;
-    } else if (_wasBuffering && !nowBuffering) {
-      final started = _bufferingSince;
-      if (started != null) {
-        final duration = DateTime.now().difference(started).inMilliseconds;
-        if (duration > 0) {
-          AppScope.read(context).recordBufferEvent(durationMs: duration);
-        }
-      }
-      _bufferingSince = null;
-      _wasBuffering = false;
-    }
-  }
-
   @override
   void dispose() {
     _historyTimer?.cancel();
     _persistHistoryPosition();
-    _player?.removeListener(_watchEnded);
-    _player?.removeListener(_watchBuffering);
-    _player?.removeListener(_watchNativeError);
-    _player?.dispose();
+    _activitySub?.cancel();
+    _positionSub?.cancel();
+    _controller?.dispose();
     super.dispose();
+  }
+
+  Future<void> _disposeController() async {
+    _activitySub?.cancel();
+    _activitySub = null;
+    _positionSub?.cancel();
+    _positionSub = null;
+    try {
+      await _controller?.dispose();
+    } catch (_) {}
+    _controller = null;
   }
 
   @override
@@ -288,48 +221,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: _engine == _PlayerEngine.hlsWebView
-                      ? Colors.orange.withValues(alpha: 0.2)
-                      : Colors.green.withValues(alpha: 0.2),
+                  color: Colors.green.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(
-                  _engine == _PlayerEngine.hlsWebView ? 'HLS.js' : 'Native',
+                child: const Text(
+                  'Native',
                   style: TextStyle(
                     fontSize: 10,
-                    color: _engine == _PlayerEngine.hlsWebView
-                        ? Colors.orange
-                        : Colors.green,
+                    color: Colors.green,
                   ),
                 ),
               ),
             ),
           ),
-          if (_engine == _PlayerEngine.native && _error != null)
-            IconButton(
-              icon: const Icon(Icons.web),
-              tooltip: '切换到WebView播放器',
-              onPressed: () {
-                _triedFallback = true;
-                _retry = 0;
-                _fallbackToHlsWebView(widget.item.url, DateTime.now());
-              },
-            ),
-          if (_engine == _PlayerEngine.hlsWebView)
-            IconButton(
-              icon: const Icon(Icons.videocam),
-              tooltip: '切换到原生播放器',
-              onPressed: () {
-                _player?.dispose();
-                _player = null;
-                _triedFallback = false;
-                _retry = 0;
-                setState(() {
-                  _engine = _PlayerEngine.native;
-                });
-                _initialize(widget.item.url);
-              },
-            ),
           if (app.settings.subtitleEnabled && app.settings.defaultSubtitleUrl.isNotEmpty)
             const Padding(
               padding: EdgeInsets.only(right: 12),
@@ -357,32 +261,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           style: const TextStyle(fontSize: 14),
                         ),
                         const SizedBox(height: 16),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 8,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: () {
-                                _retry = 0;
-                                _triedFallback = false;
-                                setState(() => _engine = _PlayerEngine.native);
-                                _initialize(widget.item.url);
-                              },
-                              icon: const Icon(Icons.refresh, size: 16),
-                              label: const Text('重试'),
-                            ),
-                            if (!_triedFallback || _engine != _PlayerEngine.hlsWebView)
-                              OutlinedButton.icon(
-                                onPressed: () {
-                                  _triedFallback = true;
-                                  _retry = 0;
-                                  _fallbackToHlsWebView(widget.item.url, DateTime.now());
-                                },
-                                icon: const Icon(Icons.web, size: 16),
-                                label: const Text('WebView播放'),
-                              ),
-                          ],
+                        FilledButton.icon(
+                          onPressed: () {
+                            _retry = 0;
+                            _initialize(widget.item.url);
+                          },
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: const Text('重试'),
                         ),
                       ],
                     ),
@@ -392,9 +277,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   children: [
                     Expanded(
                       child: Center(
-                        child: _engine == _PlayerEngine.hlsWebView
-                            ? _buildHlsWebViewPlayer()
-                            : _buildNativePlayer(app),
+                        child: _buildPlayer(app),
                       ),
                     ),
                     if (widget.currentEpisodeIndex >= 0 && widget.episodes.isNotEmpty)
@@ -427,64 +310,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                   ],
                 ),
-      floatingActionButton: _engine == _PlayerEngine.native && _player != null
-          ? FloatingActionButton(
-              onPressed: () {
-                final value = _player!.value;
-                if (value.isPlaying) {
-                  _player!.pause();
-                } else {
-                  _player!.play();
-                }
-                setState(() {});
-              },
-              child: Icon(
-                _player!.value.isPlaying ? Icons.pause : Icons.play_arrow,
-              ),
-            )
-          : null,
     );
   }
 
-  Widget _buildNativePlayer(AppController app) {
-    return Stack(
-      children: [
-        AspectRatio(
-          aspectRatio: _player!.value.aspectRatio,
-          child: VideoPlayer(_player!),
-        ),
-        if (_showQos) _buildQosPanel(app),
-      ],
-    );
-  }
+  Widget _buildPlayer(AppController app) {
+    final c = _controller;
+    if (c == null) return const SizedBox.shrink();
 
-  Widget _buildHlsWebViewPlayer() {
-    final app = AppScope.of(context);
     return Stack(
       children: [
-        HlsWebViewPlayer(
-          key: _hlsPlayerKey,
-          url: widget.item.url,
-          title: widget.item.title,
-          autoPlay: true,
-          onEnded: () {
-            if (!_endHandled) {
-              _endHandled = true;
-              _playNextIfNeeded();
-            }
-          },
-          onPlaying: () {
-            debugPrint('[PlayerScreen] HLS.js WebView player started playing');
-          },
-          onError: (error) {
-            debugPrint('[PlayerScreen] HLS.js WebView player error: $error');
-            if (mounted) {
-              setState(() {
-                _error = 'HLS播放失败: $error';
-              });
-            }
-          },
-        ),
+        NativeVideoPlayer(controller: c),
         if (_showQos) _buildQosPanel(app),
       ],
     );
@@ -524,15 +359,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _persistHistoryPosition() {
-    if (_engine == _PlayerEngine.hlsWebView) {
-      // WebView history persist is handled differently (no sync access).
-      return;
-    }
-    final player = _player;
-    if (player == null) return;
-    final value = player.value;
-    if (!value.isInitialized || value.hasError) return;
-    final seconds = value.position.inSeconds;
+    final c = _controller;
+    if (c == null) return;
+    final seconds = c.currentPosition.inSeconds;
     if (seconds < 0 || seconds == _lastSavedPosition) return;
     _lastSavedPosition = seconds;
     unawaited(
@@ -541,7 +370,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildQosPanel(AppController app) {
-    final value = _player?.value;
+    final c = _controller;
     return Positioned(
       left: 10,
       top: 10,
@@ -558,7 +387,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('QoS Monitor', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text('引擎: ${_engine == _PlayerEngine.hlsWebView ? "HLS.js WebView" : "Native ExoPlayer"}'),
+              const Text('引擎: Native (better_native_video_player)'),
               Text('本次启动: ${_sessionStartupMs}ms'),
               Text('累计会话: ${app.qosSessionCount}'),
               Text('平均启动: ${app.qosAvgStartupMs}ms'),
@@ -566,8 +395,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Text('缓冲总时长: ${app.qosBufferTotalMs}ms'),
               Text('重试次数: ${app.qosRetryCount}'),
               Text('错误次数: ${app.qosErrorCount}'),
-              if (value != null) Text('播放中: ${value.isPlaying ? '是' : '否'}'),
-              if (_triedFallback) const Text('已回退: 是', style: TextStyle(color: Colors.orange)),
+              if (c != null) Text('状态: ${c.activityState.name}'),
+              if (c != null) Text('位置: ${c.currentPosition.inSeconds}s / ${c.duration.inSeconds}s'),
             ],
           ),
         ),
