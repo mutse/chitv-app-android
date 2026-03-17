@@ -20,11 +20,20 @@ class _DetailScreenState extends State<DetailScreen> {
   bool _switchingSource = false;
   VideoItem? _detail;
   List<EpisodeItem> _episodes = const [];
+  final _episodeSearchController = TextEditingController();
+  String _episodeQuery = '';
+  bool _episodeAscending = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _episodeSearchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -42,6 +51,7 @@ class _DetailScreenState extends State<DetailScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final detail = _detail ?? widget.item;
+    final visibleEpisodes = _visibleEpisodes();
 
     return Scaffold(
       appBar: AppBar(
@@ -155,6 +165,53 @@ class _DetailScreenState extends State<DetailScreen> {
                   ),
                 ),
                 const Divider(height: 1),
+                if (_episodes.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _episodeSearchController,
+                            onChanged: (value) => setState(() => _episodeQuery = value.trim()),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              hintText: '搜索剧集 / 输入集数',
+                              prefixIcon: const Icon(Icons.search),
+                              border: const OutlineInputBorder(),
+                              suffixIcon: _episodeQuery.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: () {
+                                        _episodeSearchController.clear();
+                                        setState(() => _episodeQuery = '');
+                                      },
+                                    ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          tooltip: '快速跳转',
+                          onPressed: () => _showEpisodeJumpDialog(detail),
+                          icon: const Icon(Icons.numbers),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          tooltip: _episodeAscending ? '倒序' : '正序',
+                          onPressed: () {
+                            setState(() => _episodeAscending = !_episodeAscending);
+                          },
+                          icon: Icon(
+                            _episodeAscending
+                                ? Icons.sort_by_alpha
+                                : Icons.sort_by_alpha_outlined,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 Expanded(
                   child: _episodes.isEmpty
                       ? GridView.builder(
@@ -174,24 +231,32 @@ class _DetailScreenState extends State<DetailScreen> {
                             );
                           },
                         )
-                      : GridView.builder(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: _episodes.length,
-                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 280,
-                            mainAxisExtent: 142,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                          ),
-                          itemBuilder: (context, index) {
-                            final ep = _episodes[index];
-                            return _EpisodeGridCard(
-                              title: ep.name,
-                              subtitle: ep.url,
-                              onPlay: () => _openPlayer(context, detail, ep, index),
-                            );
-                          },
-                        ),
+                      : visibleEpisodes.isEmpty
+                          ? const Center(child: Text('没有匹配的剧集'))
+                          : GridView.builder(
+                              padding: const EdgeInsets.all(12),
+                              itemCount: visibleEpisodes.length,
+                              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 280,
+                                mainAxisExtent: 142,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                              ),
+                              itemBuilder: (context, index) {
+                                final entry = visibleEpisodes[index];
+                                final ep = entry.episode;
+                                return _EpisodeGridCard(
+                                  title: ep.name,
+                                  subtitle: ep.url,
+                                  onPlay: () => _openPlayer(
+                                    context,
+                                    detail,
+                                    ep,
+                                    entry.originalIndex,
+                                  ),
+                                );
+                              },
+                            ),
                 ),
               ],
             ),
@@ -326,6 +391,89 @@ class _DetailScreenState extends State<DetailScreen> {
     }
     return sourceId;
   }
+
+  List<_EpisodeEntry> _visibleEpisodes() {
+    final entries = <_EpisodeEntry>[
+      for (var i = 0; i < _episodes.length; i++)
+        _EpisodeEntry(episode: _episodes[i], originalIndex: i),
+    ];
+
+    if (_episodeQuery.isEmpty) {
+      final sorted = [...entries];
+      if (!_episodeAscending) {
+        return sorted.reversed.toList();
+      }
+      return sorted;
+    }
+
+    final query = _episodeQuery.toLowerCase();
+    final number = int.tryParse(query);
+    final filtered = entries.where((entry) {
+      if (number != null && entry.originalIndex + 1 == number) return true;
+      return entry.episode.name.toLowerCase().contains(query);
+    }).toList();
+
+    if (!_episodeAscending) {
+      return filtered.reversed.toList();
+    }
+    return filtered;
+  }
+
+  Future<void> _showEpisodeJumpDialog(VideoItem detail) async {
+    if (_episodes.isEmpty) return;
+    final jumpCtrl = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('快速跳转'),
+          content: TextField(
+            controller: jumpCtrl,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: '输入 1 ~ ${_episodes.length}',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final target = int.tryParse(jumpCtrl.text.trim());
+                Navigator.pop(ctx);
+                if (target == null || target < 1 || target > _episodes.length) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('输入的集数无效')),
+                  );
+                  return;
+                }
+                final index = target - 1;
+                final episode = _episodes[index];
+                _openPlayer(context, detail, episode, index);
+              },
+              child: const Text('跳转播放'),
+            ),
+          ],
+        );
+      },
+    );
+
+    jumpCtrl.dispose();
+  }
+}
+
+class _EpisodeEntry {
+  const _EpisodeEntry({
+    required this.episode,
+    required this.originalIndex,
+  });
+
+  final EpisodeItem episode;
+  final int originalIndex;
 }
 
 class _EpisodeGridCard extends StatelessWidget {

@@ -36,6 +36,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _wasBuffering = false;
   DateTime? _bufferingSince;
   int _sessionStartupMs = 0;
+  Timer? _historyTimer;
+  int _lastSavedPosition = -1;
 
   @override
   void initState() {
@@ -94,6 +96,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _loading = false;
       });
 
+      _startHistoryTracking();
       unawaited(AppScope.read(context).addHistory(widget.item));
     } catch (e) {
       if (!mounted) return;
@@ -157,6 +160,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   void dispose() {
+    _historyTimer?.cancel();
+    _persistHistoryPosition();
     _player?.removeListener(_watchEnded);
     _player?.removeListener(_watchBuffering);
     _player?.dispose();
@@ -267,6 +272,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _openEpisode(int index) {
+    _persistHistoryPosition();
     final ep = widget.episodes[index];
     final title = widget.seriesTitle ?? widget.item.title;
     final next = VideoItem(
@@ -288,6 +294,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
           seriesTitle: title,
         ),
       ),
+    );
+  }
+
+  void _startHistoryTracking() {
+    _historyTimer?.cancel();
+    _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _persistHistoryPosition();
+    });
+  }
+
+  void _persistHistoryPosition() {
+    final player = _player;
+    if (player == null) return;
+    final value = player.value;
+    if (!value.isInitialized || value.hasError) return;
+    final seconds = value.position.inSeconds;
+    if (seconds < 0 || seconds == _lastSavedPosition) return;
+    _lastSavedPosition = seconds;
+    unawaited(
+      AppScope.read(context).addHistory(widget.item, positionSeconds: seconds),
     );
   }
 
