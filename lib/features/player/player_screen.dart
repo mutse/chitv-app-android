@@ -40,6 +40,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _sessionStartupMs = 0;
   Timer? _historyTimer;
   int _lastSavedPosition = -1;
+  static const Duration _initializeTimeout = Duration(seconds: 20);
+  static const Duration _loadUrlTimeout = Duration(seconds: 20);
 
   /// Subscriptions to player streams.
   StreamSubscription<PlayerActivityState>? _activitySub;
@@ -85,13 +87,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
               showNativeControls: true,
             );
 
-            await next.initialize().timeout(const Duration(seconds: 8));
+            await next.initialize().timeout(_initializeTimeout);
             await next
                 .loadUrl(
                   url: uri.toString(),
                   headers: _buildPlaybackHeaders(uri),
                 )
-                .timeout(const Duration(seconds: 12));
+                .timeout(_loadUrlTimeout);
 
             controller = next;
             break;
@@ -138,9 +140,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
 
       AppScope.read(context).recordPlaybackError();
+      final msg = e is TimeoutException
+          ? '播放超时，请检查网络或代理配置后重试'
+          : '播放失败: $e';
       setState(() {
         _loading = false;
-        _error = '播放失败: $e';
+        _error = msg;
       });
     }
   }

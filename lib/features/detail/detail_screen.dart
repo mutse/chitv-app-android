@@ -218,7 +218,7 @@ class _DetailScreenState extends State<DetailScreen> {
                           padding: const EdgeInsets.all(12),
                           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 280,
-                            mainAxisExtent: 142,
+                            mainAxisExtent: 260,
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
                           ),
@@ -226,7 +226,7 @@ class _DetailScreenState extends State<DetailScreen> {
                           itemBuilder: (context, _) {
                             return _EpisodeGridCard(
                               title: '立即播放',
-                              subtitle: detail.url,
+                              imageUrl: detail.poster,
                               onPlay: () => _openPlayer(context, detail, null, -1),
                             );
                           },
@@ -238,7 +238,7 @@ class _DetailScreenState extends State<DetailScreen> {
                               itemCount: visibleEpisodes.length,
                               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                                 maxCrossAxisExtent: 280,
-                                mainAxisExtent: 142,
+                                mainAxisExtent: 260,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
                               ),
@@ -247,7 +247,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                 final ep = entry.episode;
                                 return _EpisodeGridCard(
                                   title: ep.name,
-                                  subtitle: ep.url,
+                                  imageUrl: detail.poster,
                                   onPlay: () => _openPlayer(
                                     context,
                                     detail,
@@ -479,12 +479,12 @@ class _EpisodeEntry {
 class _EpisodeGridCard extends StatelessWidget {
   const _EpisodeGridCard({
     required this.title,
-    required this.subtitle,
+    required this.imageUrl,
     required this.onPlay,
   });
 
   final String title;
-  final String subtitle;
+  final String imageUrl;
   final VoidCallback onPlay;
 
   @override
@@ -495,18 +495,33 @@ class _EpisodeGridCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: imageUrl.isEmpty
+                    ? Container(
+                        color: Theme.of(context).colorScheme.surfaceContainer,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.movie_outlined),
+                      )
+                    : Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Theme.of(context).colorScheme.surfaceContainer,
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.broken_image_outlined),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Text(
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
             ),
             const Spacer(),
             SizedBox(
