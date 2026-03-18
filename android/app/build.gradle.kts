@@ -51,6 +51,16 @@ flutter {
     source = "../.."
 }
 
+configurations.configureEach {
+    resolutionStrategy {
+        force(
+            "androidx.browser:browser:1.8.0",
+            "androidx.core:core:1.15.0",
+            "androidx.core:core-ktx:1.15.0",
+        )
+    }
+}
+
 dependencies {
     constraints {
         implementation("androidx.browser:browser:1.8.0") {
