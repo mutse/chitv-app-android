@@ -6,6 +6,7 @@ import 'app/app.dart';
 import 'app/app_controller.dart';
 import 'app/video_repository.dart';
 import 'core/storage/local_store.dart';
+import 'core/storage/douban_api_client.dart';
 import 'core/storage/vod_api_client.dart';
 import 'core/utils/content_filter.dart';
 import 'core/utils/episode_parser.dart';
@@ -20,6 +21,7 @@ Future<void> main() async {
       filter: ContentFilter(),
       episodeParser: EpisodeParser(),
     ),
+    doubanApi: DoubanApiClient(),
   );
 
   runApp(ChiTvApp(controller: controller));

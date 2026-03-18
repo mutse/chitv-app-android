@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../core/models/douban_item.dart';
 import '../../core/models/video_item.dart';
 import '../detail/detail_screen.dart';
 import '../settings/settings_screen.dart';
@@ -51,7 +52,10 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           if (_tab == 0)
             IconButton(
-              onPressed: () => app.loadHomeVideos(sourceIds: _selectedSourceIds),
+              onPressed: () async {
+                await app.loadHomeVideos(sourceIds: _selectedSourceIds);
+                await app.loadDoubanHot();
+              },
               icon: const Icon(Icons.refresh),
             ),
         ],
@@ -209,10 +213,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final others = app.homeVideos.skip(featured.length).toList();
 
     return RefreshIndicator(
-      onRefresh: () => app.loadHomeVideos(sourceIds: _selectedSourceIds),
+      onRefresh: () async {
+        await app.loadHomeVideos(sourceIds: _selectedSourceIds);
+        await app.loadDoubanHot();
+      },
       child: ListView(
         padding: const EdgeInsets.only(bottom: 16),
         children: [
+          _buildDoubanHotSection(context, app),
           if (app.history.isNotEmpty) ...[
             const Padding(
               padding: EdgeInsets.fromLTRB(12, 8, 12, 6),
@@ -458,6 +466,66 @@ class _HomeScreenState extends State<HomeScreen> {
                       _selectedSourceIds.remove(s.id);
                     }
                   });
+                  _doSearch(app);
+                },
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDoubanHotSection(BuildContext context, AppController app) {
+    final hasMovies = app.doubanHotMovies.isNotEmpty;
+    final hasTv = app.doubanHotTvShows.isNotEmpty;
+    if (app.loadingDoubanHot && !hasMovies && !hasTv) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(12, 6, 12, 2),
+        child: LinearProgressIndicator(minHeight: 2),
+      );
+    }
+    if (!hasMovies && !hasTv) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(12, 8, 12, 6),
+          child: Text(
+            '豆瓣热门（点选即搜索）',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+        ),
+        if (hasMovies) _buildDoubanStrip(context, '电影', app.doubanHotMovies),
+        if (hasTv) _buildDoubanStrip(context, '剧集', app.doubanHotTvShows),
+      ],
+    );
+  }
+
+  Widget _buildDoubanStrip(BuildContext context, String label, List<DoubanItem> items) {
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Chip(label: Text(label)),
+          ),
+          ...items.take(10).map((item) {
+            final rate = item.rate <= 0 ? '' : ' ${item.rate.toStringAsFixed(1)}';
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ActionChip(
+                label: Text('${item.title}$rate'),
+                onPressed: () {
+                  final app = AppScope.read(context);
+                  _controller.text = item.title;
+                  setState(() {});
                   _doSearch(app);
                 },
               ),

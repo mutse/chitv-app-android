@@ -5,10 +5,12 @@ import 'package:flutter/foundation.dart';
 
 import '../core/models/alternative_source_candidate.dart';
 import '../core/models/app_settings.dart';
+import '../core/models/douban_item.dart';
 import '../core/models/episode_item.dart';
 import '../core/models/playback_history_item.dart';
 import '../core/models/video_item.dart';
 import '../core/models/vod_source.dart';
+import '../core/storage/douban_api_client.dart';
 import '../core/storage/local_store.dart';
 import 'video_repository.dart';
 
@@ -16,11 +18,14 @@ class AppController extends ChangeNotifier {
   AppController({
     required LocalStore localStore,
     required VideoRepository repository,
+    required DoubanApiClient doubanApi,
   })  : _localStore = localStore,
-        _repository = repository;
+        _repository = repository,
+        _doubanApi = doubanApi;
 
   final LocalStore _localStore;
   final VideoRepository _repository;
+  final DoubanApiClient _doubanApi;
 
   bool initializing = true;
   bool searching = false;
@@ -32,6 +37,9 @@ class AppController extends ChangeNotifier {
   List<VodSource> sources = const [];
   Map<String, int?> sourceLatencyMs = const {};
   List<VideoItem> searchResults = const [];
+  List<DoubanItem> doubanHotMovies = const [];
+  List<DoubanItem> doubanHotTvShows = const [];
+  bool loadingDoubanHot = false;
   List<VideoItem> favorites = const [];
   List<PlaybackHistoryItem> history = const [];
   AppSettings settings = const AppSettings();
@@ -76,6 +84,7 @@ class AppController extends ChangeNotifier {
       await Future.wait<void>([
         loadHomeVideos(),
         refreshSourceSpeeds(silent: true),
+        loadDoubanHot(silent: true),
       ]);
     } catch (_) {
       // Warm-up runs in background; UI remains usable even when it fails.
@@ -93,6 +102,7 @@ class AppController extends ChangeNotifier {
         sources: sources,
         query: query.trim(),
         adultFilterEnabled: settings.adultFilterEnabled,
+        proxyBaseUrl: settings.proxyBaseUrl,
         sourceIds: sourceIds,
       );
       await _saveSearchHistory(query.trim());
@@ -113,6 +123,7 @@ class AppController extends ChangeNotifier {
         sources: sources,
         query: '',
         adultFilterEnabled: settings.adultFilterEnabled,
+        proxyBaseUrl: settings.proxyBaseUrl,
         sourceIds: sourceIds,
       );
     } catch (_) {
@@ -123,9 +134,35 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadDoubanHot({bool silent = false}) async {
+    if (!silent) {
+      loadingDoubanHot = true;
+      notifyListeners();
+    }
+
+    try {
+      final result = await Future.wait<List<DoubanItem>>([
+        _doubanApi.fetchHotMovies(proxyBaseUrl: settings.proxyBaseUrl),
+        _doubanApi.fetchHotTvShows(proxyBaseUrl: settings.proxyBaseUrl),
+      ]);
+      doubanHotMovies = result[0];
+      doubanHotTvShows = result[1];
+    } catch (_) {
+      doubanHotMovies = const [];
+      doubanHotTvShows = const [];
+    }
+
+    loadingDoubanHot = false;
+    notifyListeners();
+  }
+
   Future<(VideoItem detail, List<EpisodeItem> episodes)> loadDetail(VideoItem item) async {
     try {
-      final result = await _repository.fetchDetail(sources: sources, video: item);
+      final result = await _repository.fetchDetail(
+        sources: sources,
+        video: item,
+        proxyBaseUrl: settings.proxyBaseUrl,
+      );
       return (result.$1, result.$2);
     } catch (_) {
       return (item, <EpisodeItem>[]);
@@ -196,6 +233,26 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setHlsProxyBaseUrl(String value) async {
+    settings = settings.copyWith(hlsProxyBaseUrl: value.trim());
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> setHlsAdFilterEnabled(bool enabled) async {
+    settings = settings.copyWith(hlsAdFilterEnabled: enabled);
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> setProxyBaseUrl(String value) async {
+    settings = settings.copyWith(proxyBaseUrl: value.trim());
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+    unawaited(loadDoubanHot(silent: true));
+    unawaited(refreshSourceSpeeds(silent: true));
+  }
+
   Future<void> refreshSourceSpeeds({bool silent = false}) async {
     if (!silent) {
       probingSources = true;
@@ -204,7 +261,10 @@ class AppController extends ChangeNotifier {
 
     final next = <String, int?>{};
     for (final source in sources) {
-      final ms = await _repository.probeSourceLatency(source);
+      final ms = await _repository.probeSourceLatency(
+        source,
+        proxyBaseUrl: settings.proxyBaseUrl,
+      );
       next[source.id] = ms;
     }
 
@@ -322,6 +382,7 @@ class AppController extends ChangeNotifier {
       sources: sources,
       current: current,
       adultFilterEnabled: settings.adultFilterEnabled,
+      proxyBaseUrl: settings.proxyBaseUrl,
     );
 
     alternatives.sort((a, b) {

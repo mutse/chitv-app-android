@@ -25,6 +25,7 @@ class VideoRepository {
     required List<VodSource> sources,
     required String query,
     required bool adultFilterEnabled,
+    String proxyBaseUrl = '',
     Set<String>? sourceIds,
     bool deduplicate = true,
   }) async {
@@ -40,6 +41,7 @@ class VideoRepository {
           baseUrl: source.apiUrl,
           sourceId: source.id,
           query: query,
+          proxyBaseUrl: proxyBaseUrl,
         );
       } catch (_) {
         return <VideoItem>[];
@@ -66,26 +68,29 @@ class VideoRepository {
   Future<(VideoItem detail, List<EpisodeItem> episodes)> fetchDetail({
     required List<VodSource> sources,
     required VideoItem video,
+    String proxyBaseUrl = '',
   }) async {
     final source = sources.firstWhere((s) => s.id == video.sourceId);
     final result = await _api.detail(
       baseUrl: source.apiUrl,
       sourceId: source.id,
       id: video.id,
+      proxyBaseUrl: proxyBaseUrl,
     );
 
     final episodes = _episodeParser.parse(result.episodesRaw);
     return (result.video, episodes);
   }
 
-  Future<int?> probeSourceLatency(VodSource source) {
-    return _api.probeLatency(baseUrl: source.apiUrl);
+  Future<int?> probeSourceLatency(VodSource source, {String proxyBaseUrl = ''}) {
+    return _api.probeLatency(baseUrl: source.apiUrl, proxyBaseUrl: proxyBaseUrl);
   }
 
   Future<List<AlternativeSourceCandidate>> findAlternatives({
     required List<VodSource> sources,
     required VideoItem current,
     required bool adultFilterEnabled,
+    String proxyBaseUrl = '',
   }) async {
     final enabled = sources
         .where((s) => s.enabled && s.id != current.sourceId)
@@ -99,6 +104,7 @@ class VideoRepository {
           baseUrl: source.apiUrl,
           sourceId: source.id,
           query: current.title,
+          proxyBaseUrl: proxyBaseUrl,
         );
         final filtered = _filter.filterVideos(
           candidates,

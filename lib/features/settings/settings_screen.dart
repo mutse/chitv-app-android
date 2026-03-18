@@ -13,16 +13,22 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _subtitleController;
+  late final TextEditingController _proxyController;
+  late final TextEditingController _hlsProxyController;
 
   @override
   void initState() {
     super.initState();
     _subtitleController = TextEditingController();
+    _proxyController = TextEditingController();
+    _hlsProxyController = TextEditingController();
   }
 
   @override
   void dispose() {
     _subtitleController.dispose();
+    _proxyController.dispose();
+    _hlsProxyController.dispose();
     super.dispose();
   }
 
@@ -32,6 +38,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (_subtitleController.text != app.settings.defaultSubtitleUrl) {
       _subtitleController.text = app.settings.defaultSubtitleUrl;
+    }
+    if (_proxyController.text != app.settings.proxyBaseUrl) {
+      _proxyController.text = app.settings.proxyBaseUrl;
+    }
+    if (_hlsProxyController.text != app.settings.hlsProxyBaseUrl) {
+      _hlsProxyController.text = app.settings.hlsProxyBaseUrl;
     }
 
     return ListView(
@@ -86,7 +98,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               }).toList(),
             ),
-          ),
+        ),
+        const SizedBox(height: 12),
+        const Text('网络代理', style: TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _proxyController,
+                decoration: const InputDecoration(
+                  labelText: '通用代理地址 (用于 /proxy)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              onPressed: () => app.setProxyBaseUrl(_proxyController.text),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Text('HLS 代理', style: TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          value: app.settings.hlsAdFilterEnabled,
+          onChanged: app.setHlsAdFilterEnabled,
+          title: const Text('HLS 广告过滤（m3u8 走代理）'),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _hlsProxyController,
+                decoration: const InputDecoration(
+                  labelText: 'HLS 代理地址 (为空时复用通用代理)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              onPressed: () => app.setHlsProxyBaseUrl(_hlsProxyController.text),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
         const SizedBox(height: 16),
         Row(
           children: [

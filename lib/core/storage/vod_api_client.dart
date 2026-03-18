@@ -25,6 +25,7 @@ class VodApiClient {
     required String baseUrl,
     required String sourceId,
     required String query,
+    String proxyBaseUrl = '',
     int page = 1,
   }) async {
     final candidates = <Map<String, String>>[
@@ -53,7 +54,8 @@ class VodApiClient {
     Object? lastError;
     for (final params in candidates) {
       try {
-        final uri = _buildUri(baseUrl, params);
+        final targetUri = _buildTargetUri(baseUrl, params);
+        final uri = _wrapWithProxy(targetUri, proxyBaseUrl);
         final resp = await _client
             .get(uri, headers: _headers)
             .timeout(const Duration(seconds: 12));
@@ -84,6 +86,7 @@ class VodApiClient {
     required String baseUrl,
     required String sourceId,
     required String id,
+    String proxyBaseUrl = '',
   }) async {
     final detailCandidates = <Map<String, String>>[
       {'ac': 'detail', 'ids': id},
@@ -92,7 +95,8 @@ class VodApiClient {
     ];
 
     for (final params in detailCandidates) {
-      final uri = _buildUri(baseUrl, params);
+      final targetUri = _buildTargetUri(baseUrl, params);
+      final uri = _wrapWithProxy(targetUri, proxyBaseUrl);
       final resp = await _client
           .get(uri, headers: _headers)
           .timeout(const Duration(seconds: 12));
@@ -151,13 +155,17 @@ class VodApiClient {
     return '';
   }
 
-  Future<int?> probeLatency({required String baseUrl}) async {
+  Future<int?> probeLatency({
+    required String baseUrl,
+    String proxyBaseUrl = '',
+  }) async {
     final started = DateTime.now();
-    final uri = Uri.parse(baseUrl).replace(queryParameters: const {
+    final targetUri = Uri.parse(baseUrl).replace(queryParameters: const {
       'ac': 'videolist',
       'wd': '测试',
       'page': '1',
     });
+    final uri = _wrapWithProxy(targetUri, proxyBaseUrl);
 
     try {
       final resp = await _client
@@ -170,10 +178,30 @@ class VodApiClient {
     }
   }
 
-  Uri _buildUri(String baseUrl, Map<String, String> params) {
+  Uri _buildTargetUri(String baseUrl, Map<String, String> params) {
     final base = Uri.parse(baseUrl.trim());
     final merged = <String, String>{...base.queryParameters, ...params};
     return base.replace(queryParameters: merged);
+  }
+
+  Uri _wrapWithProxy(Uri target, String proxyBaseUrl) {
+    final proxy = proxyBaseUrl.trim();
+    if (proxy.isEmpty) return target;
+
+    final parsed = Uri.tryParse(proxy);
+    if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+      return target;
+    }
+
+    final path = _joinPath(parsed.path, '/proxy');
+    final query = <String, String>{...parsed.queryParameters, 'url': target.toString()};
+    return parsed.replace(path: path, queryParameters: query);
+  }
+
+  String _joinPath(String left, String right) {
+    final l = left.endsWith('/') ? left.substring(0, left.length - 1) : left;
+    final r = right.startsWith('/') ? right : '/$right';
+    return '$l$r';
   }
 
   List<Map<String, dynamic>> _extractList(Map<String, dynamic> map) {

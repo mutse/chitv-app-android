@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../core/models/app_settings.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
 
@@ -52,6 +53,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _initialize(String url) async {
     final startedAt = DateTime.now();
+    final settings = AppScope.read(context).settings;
     setState(() {
       _loading = true;
       _error = null;
@@ -71,7 +73,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Object? lastError;
 
       for (final raw in rawCandidates) {
-        final candidates = _buildUrlCandidates(raw);
+        final resolved = _resolvePlaybackUrl(raw, settings);
+        final candidates = _buildUrlCandidates(resolved);
         for (final uri in candidates) {
           NativeVideoPlayerController? next;
           try {
@@ -438,6 +441,53 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     return result;
+  }
+
+  String _resolvePlaybackUrl(String rawUrl, AppSettings settings) {
+    final normalized = rawUrl.trim();
+    if (normalized.isEmpty) return normalized;
+
+    if (!_isHlsUrl(normalized)) return normalized;
+    if (!settings.hlsAdFilterEnabled) return normalized;
+
+    final proxyBase = settings.hlsProxyBaseUrl.trim().isNotEmpty
+        ? settings.hlsProxyBaseUrl.trim()
+        : settings.proxyBaseUrl.trim();
+    if (proxyBase.isEmpty) return normalized;
+
+    final baseUri = Uri.tryParse(proxyBase);
+    if (baseUri == null || !baseUri.hasScheme || baseUri.host.isEmpty) {
+      return normalized;
+    }
+
+    final existingUri = Uri.tryParse(normalized);
+    if (existingUri != null &&
+        existingUri.hasScheme &&
+        existingUri.host == baseUri.host &&
+        existingUri.path.contains('/hls/proxy')) {
+      return normalized;
+    }
+
+    final proxyPath = _joinPath(baseUri.path, '/hls/proxy');
+    final query = <String, String>{
+      ...baseUri.queryParameters,
+      'url': normalized,
+    };
+
+    return baseUri.replace(path: proxyPath, queryParameters: query).toString();
+  }
+
+  bool _isHlsUrl(String value) {
+    final lower = value.toLowerCase();
+    return lower.contains('.m3u8') ||
+        lower.contains('type=m3u8') ||
+        lower.endsWith('m3u');
+  }
+
+  String _joinPath(String left, String right) {
+    final l = left.endsWith('/') ? left.substring(0, left.length - 1) : left;
+    final r = right.startsWith('/') ? right : '/$right';
+    return '$l$r';
   }
 
   Map<String, String> _buildPlaybackHeaders(Uri uri) {
