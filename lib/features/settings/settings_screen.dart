@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_scope.dart';
 import '../../core/models/ad_filter.dart';
@@ -14,10 +16,15 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  static const String _appDescription = 'ChiTV Android 客户端，基于 Flutter 构建，提供聚合搜索、播放与视频源管理能力。';
+  static const String _author = 'mutse';
+  static const String _githubUrl = 'https://github.com/mutse/chitv-app-android';
+
   late final TextEditingController _subtitleController;
   late final TextEditingController _proxyController;
   late final TextEditingController _hlsProxyController;
   late final TextEditingController _doubanEndpointController;
+  String _appVersion = '读取中...';
 
   @override
   void initState() {
@@ -26,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _proxyController = TextEditingController();
     _hlsProxyController = TextEditingController();
     _doubanEndpointController = TextEditingController();
+    _loadPackageInfo();
   }
 
   @override
@@ -374,6 +382,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        const _SectionTitle('关于'),
+        Card(
+          child: Column(
+            children: [
+              const ListTile(
+                leading: Icon(Icons.info_outline),
+                title: Text('App 描述'),
+                subtitle: Text(_appDescription),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.new_releases_outlined),
+                title: const Text('版本号'),
+                subtitle: Text(_appVersion),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.person_outline),
+                title: Text('作者'),
+                subtitle: Text(_author),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.code_outlined),
+                title: const Text('GitHub 仓库'),
+                subtitle: const Text(_githubUrl),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: _openGithubRepo,
+                onLongPress: () => _copyToClipboard(_githubUrl, '仓库链接已复制'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         Card(
           child: ListTile(
             title: const Text('QoS 诊断汇总'),
@@ -443,6 +485,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return value;
     }
     return 'system';
+  }
+
+  Future<void> _loadPackageInfo() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() {
+      _appVersion = '${packageInfo.version} (${packageInfo.buildNumber})';
+    });
+  }
+
+  Future<void> _openGithubRepo() async {
+    final uri = Uri.parse(_githubUrl);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('无法打开仓库链接')),
+    );
+  }
+
+  Future<void> _copyToClipboard(String text, String message) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _confirmAndRun(
