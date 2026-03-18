@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_scope.dart';
+import '../../core/models/ad_filter.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/models/vod_source.dart';
 
@@ -155,6 +156,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        const _SectionTitle('广告过滤'),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  value: app.settings.hlsAdFilterEnabled,
+                  onChanged: app.setHlsAdFilterEnabled,
+                  title: const Text('启用广告过滤'),
+                  subtitle: const Text('会同时过滤 HLS 分片、搜索结果、剧集列表中的广告链接'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Text(
+                      '自定义规则 ${app.settings.adFilters.length} 条',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const Spacer(),
+                    FilledButton.tonalIcon(
+                      onPressed: () => _showAddFilterDialog(context),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('添加规则'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (app.settings.adFilters.isEmpty)
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('暂无自定义规则'),
+                  )
+                else
+                  ...app.settings.adFilters.map((filter) {
+                    return Column(
+                      children: [
+                        SwitchListTile(
+                          value: filter.enabled,
+                          onChanged: (value) => app.toggleAdFilter(filter.id, value),
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            filter.pattern,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(filter.type.label),
+                          secondary: IconButton(
+                            onPressed: () => app.removeAdFilter(filter.id),
+                            icon: const Icon(Icons.delete_outline),
+                            tooltip: '删除规则',
+                          ),
+                        ),
+                        if (filter.id != app.settings.adFilters.last.id)
+                          const Divider(height: 1),
+                      ],
+                    );
+                  }),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         const _SectionTitle('内容过滤'),
         Card(
           child: SwitchListTile(
@@ -227,12 +292,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                SwitchListTile(
-                  value: app.settings.hlsAdFilterEnabled,
-                  onChanged: app.setHlsAdFilterEnabled,
-                  title: const Text('HLS 广告过滤（m3u8 走代理）'),
-                  contentPadding: EdgeInsets.zero,
-                ),
                 Row(
                   children: [
                     Expanded(
@@ -439,8 +498,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             TextButton(
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: json));
-                if (!ctx.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(ctx).showSnackBar(
                   const SnackBar(content: Text('已复制到剪贴板')),
                 );
               },
@@ -485,13 +544,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: () async {
                 try {
                   await app.importConfigurationJson(controller.text.trim());
-                  if (!ctx.mounted) return;
+                  if (!ctx.mounted || !context.mounted) return;
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('配置导入成功')),
                   );
                 } catch (e) {
-                  if (!ctx.mounted) return;
+                  if (!ctx.mounted || !context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('导入失败: $e')),
                   );
@@ -557,6 +616,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     nameCtrl.dispose();
     urlCtrl.dispose();
+  }
+
+  Future<void> _showAddFilterDialog(BuildContext context) async {
+    final app = AppScope.read(context);
+    final patternController = TextEditingController();
+    var selectedType = AdFilterType.urlPattern;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocalState) {
+            return AlertDialog(
+              title: const Text('新增过滤规则'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<AdFilterType>(
+                    initialValue: selectedType,
+                    decoration: const InputDecoration(
+                      labelText: '规则类型',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: AdFilterType.values.map((type) {
+                      return DropdownMenuItem(
+                        value: type,
+                        child: Text(type.label),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setLocalState(() => selectedType = value);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: patternController,
+                    decoration: const InputDecoration(
+                      labelText: '匹配内容',
+                      hintText: '例如：doubleclick / ad- / promo',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    await app.addAdFilter(
+                      pattern: patternController.text,
+                      type: selectedType,
+                    );
+                    if (!ctx.mounted) return;
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('添加'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    patternController.dispose();
   }
 }
 

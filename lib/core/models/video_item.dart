@@ -17,6 +17,26 @@ class VideoItem {
   final String sourceId;
   final String? vodPlayUrl;
 
+  VideoItem copyWith({
+    String? id,
+    String? title,
+    String? description,
+    String? poster,
+    String? url,
+    String? sourceId,
+    String? vodPlayUrl,
+  }) {
+    return VideoItem(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      poster: poster ?? this.poster,
+      url: url ?? this.url,
+      sourceId: sourceId ?? this.sourceId,
+      vodPlayUrl: vodPlayUrl ?? this.vodPlayUrl,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,

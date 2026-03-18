@@ -1,3 +1,5 @@
+import 'ad_filter.dart';
+
 class AppSettings {
   static const String defaultDoubanHotEndpoint =
       'https://movie.douban.com/j/search_subjects';
@@ -15,6 +17,7 @@ class AppSettings {
     this.doubanHotEnabled = true,
     this.doubanHotEndpoint = defaultDoubanHotEndpoint,
     this.appThemeMode = 'system',
+    this.adFilters = AdFilter.defaultFilters,
   });
 
   final bool adultFilterEnabled;
@@ -29,6 +32,7 @@ class AppSettings {
   final bool doubanHotEnabled;
   final String doubanHotEndpoint;
   final String appThemeMode;
+  final List<AdFilter> adFilters;
 
   AppSettings copyWith({
     bool? adultFilterEnabled,
@@ -43,6 +47,7 @@ class AppSettings {
     bool? doubanHotEnabled,
     String? doubanHotEndpoint,
     String? appThemeMode,
+    List<AdFilter>? adFilters,
   }) {
     return AppSettings(
       adultFilterEnabled: adultFilterEnabled ?? this.adultFilterEnabled,
@@ -57,6 +62,7 @@ class AppSettings {
       doubanHotEnabled: doubanHotEnabled ?? this.doubanHotEnabled,
       doubanHotEndpoint: doubanHotEndpoint ?? this.doubanHotEndpoint,
       appThemeMode: appThemeMode ?? this.appThemeMode,
+      adFilters: adFilters ?? this.adFilters,
     );
   }
 
@@ -73,6 +79,7 @@ class AppSettings {
     'doubanHotEnabled': doubanHotEnabled,
     'doubanHotEndpoint': doubanHotEndpoint,
     'appThemeMode': appThemeMode,
+    'adFilters': adFilters.map((e) => e.toJson()).toList(),
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -93,6 +100,12 @@ class AppSettings {
       doubanHotEndpoint:
           json['doubanHotEndpoint'] as String? ?? defaultDoubanHotEndpoint,
       appThemeMode: json['appThemeMode'] as String? ?? 'system',
+      adFilters: (json['adFilters'] as List<dynamic>?)
+              ?.whereType<Map>()
+              .map((e) => AdFilter.fromJson(Map<String, dynamic>.from(e)))
+              .where((e) => e.pattern.trim().isNotEmpty)
+              .toList() ??
+          AdFilter.defaultFilters,
     );
   }
 }

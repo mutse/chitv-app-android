@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../core/models/alternative_source_candidate.dart';
+import '../core/models/ad_filter.dart';
 import '../core/models/episode_item.dart';
 import '../core/models/video_item.dart';
 import '../core/models/vod_source.dart';
@@ -25,6 +26,8 @@ class VideoRepository {
     required List<VodSource> sources,
     required String query,
     required bool adultFilterEnabled,
+    required bool adFilteringEnabled,
+    List<AdFilter> adFilters = const [],
     String proxyBaseUrl = '',
     Set<String>? sourceIds,
     bool deduplicate = true,
@@ -62,12 +65,22 @@ class VideoRepository {
       }).toList();
     }
 
-    return _filter.filterVideos(dedup, adultFilterEnabled: adultFilterEnabled);
+    final visible = _filter.filterVideos(
+      dedup,
+      adultFilterEnabled: adultFilterEnabled,
+    );
+    return _filterAdVideos(
+      visible,
+      adFilteringEnabled: adFilteringEnabled,
+      adFilters: adFilters,
+    );
   }
 
   Future<(VideoItem detail, List<EpisodeItem> episodes)> fetchDetail({
     required List<VodSource> sources,
     required VideoItem video,
+    required bool adFilteringEnabled,
+    List<AdFilter> adFilters = const [],
     String proxyBaseUrl = '',
   }) async {
     final source = sources.firstWhere((s) => s.id == video.sourceId);
@@ -78,8 +91,21 @@ class VideoRepository {
       proxyBaseUrl: proxyBaseUrl,
     );
 
-    final episodes = _episodeParser.parse(result.episodesRaw);
-    return (result.video, episodes);
+    final episodes = _filterAdEpisodes(
+      _episodeParser.parse(result.episodesRaw),
+      adFilteringEnabled: adFilteringEnabled,
+      adFilters: adFilters,
+    );
+    return (
+      _isAdMatch(
+        result.video.url,
+        adFilteringEnabled: adFilteringEnabled,
+        adFilters: adFilters,
+      )
+          ? result.video.copyWith(url: episodes.isEmpty ? '' : episodes.first.url)
+          : result.video,
+      episodes,
+    );
   }
 
   Future<int?> probeSourceLatency(VodSource source, {String proxyBaseUrl = ''}) {
@@ -90,6 +116,8 @@ class VideoRepository {
     required List<VodSource> sources,
     required VideoItem current,
     required bool adultFilterEnabled,
+    required bool adFilteringEnabled,
+    List<AdFilter> adFilters = const [],
     String proxyBaseUrl = '',
   }) async {
     final enabled = sources
@@ -110,10 +138,15 @@ class VideoRepository {
           candidates,
           adultFilterEnabled: adultFilterEnabled,
         );
-        if (filtered.isEmpty) continue;
+        final visible = _filterAdVideos(
+          filtered,
+          adFilteringEnabled: adFilteringEnabled,
+          adFilters: adFilters,
+        );
+        if (visible.isEmpty) continue;
 
         VideoItem? best;
-        for (final item in filtered) {
+        for (final item in visible) {
           final n = _normalizeTitle(item.title);
           if (n == normalizedTarget) {
             best = item;
@@ -139,5 +172,57 @@ class VideoRepository {
         .toLowerCase()
         .replaceAll(RegExp(r'\s+'), '')
         .replaceAll(RegExp(r'[^\u4e00-\u9fa5a-z0-9]'), '');
+  }
+
+  List<VideoItem> _filterAdVideos(
+    List<VideoItem> items, {
+    required bool adFilteringEnabled,
+    required List<AdFilter> adFilters,
+  }) {
+    if (!adFilteringEnabled || adFilters.isEmpty) return items;
+    return items
+        .where(
+          (item) => !_isAdMatch(
+            item.url,
+            adFilteringEnabled: adFilteringEnabled,
+            adFilters: adFilters,
+          ),
+        )
+        .toList();
+  }
+
+  List<EpisodeItem> _filterAdEpisodes(
+    List<EpisodeItem> items, {
+    required bool adFilteringEnabled,
+    required List<AdFilter> adFilters,
+  }) {
+    if (!adFilteringEnabled || adFilters.isEmpty) return items;
+    return items
+        .where(
+          (item) => !_isAdMatch(
+            item.url,
+            adFilteringEnabled: adFilteringEnabled,
+            adFilters: adFilters,
+          ),
+        )
+        .toList();
+  }
+
+  bool _isAdMatch(
+    String value, {
+    required bool adFilteringEnabled,
+    required List<AdFilter> adFilters,
+  }) {
+    if (!adFilteringEnabled) return false;
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+
+    for (final filter in adFilters) {
+      if (!filter.enabled) continue;
+      final pattern = filter.pattern.trim().toLowerCase();
+      if (pattern.isEmpty) continue;
+      if (normalized.contains(pattern)) return true;
+    }
+    return false;
   }
 }

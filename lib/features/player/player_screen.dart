@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../core/models/ad_filter.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
@@ -647,12 +648,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ? settings.hlsProxyBaseUrl.trim()
         : settings.proxyBaseUrl.trim();
     if (proxyBase.isEmpty) {
-      return _buildLocalFilteredManifest(normalized);
+      return _buildLocalFilteredManifest(normalized, settings: settings);
     }
 
     final baseUri = Uri.tryParse(proxyBase);
     if (baseUri == null || !baseUri.hasScheme || baseUri.host.isEmpty) {
-      return _buildLocalFilteredManifest(normalized);
+      return _buildLocalFilteredManifest(normalized, settings: settings);
     }
 
     final existingUri = Uri.tryParse(normalized);
@@ -685,7 +686,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return '$l$r';
   }
 
-  Future<String> _buildLocalFilteredManifest(String sourceUrl) async {
+  Future<String> _buildLocalFilteredManifest(
+    String sourceUrl, {
+    required AppSettings settings,
+  }) async {
     if (_localFilteredManifestCache.containsKey(sourceUrl)) {
       return _localFilteredManifestCache[sourceUrl]!;
     }
@@ -707,7 +711,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final body = response.body;
       if (!body.trimLeft().startsWith('#EXTM3U')) return sourceUrl;
 
-      final filtered = _filterAdsFromM3u8(body, sourceUri);
+      final filtered = _filterAdsFromM3u8(
+        body,
+        sourceUri,
+        settings: settings,
+      );
       if (filtered.trim().isEmpty) return sourceUrl;
 
       final file = File(
@@ -723,7 +731,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  String _filterAdsFromM3u8(String content, Uri sourceUri) {
+  String _filterAdsFromM3u8(
+    String content,
+    Uri sourceUri, {
+    required AppSettings settings,
+  }) {
     final lines = content.split('\n');
     final output = <String>[];
     final base = sourceUri.resolve('./');
@@ -750,10 +762,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
         continue;
       }
 
-      output.add(base.resolve(line).toString());
+      final resolved = base.resolve(line).toString();
+      if (_matchesAdFilter(resolved, settings.adFilters)) {
+        if (output.isNotEmpty && output.last.trim().startsWith('#EXTINF')) {
+          output.removeLast();
+        }
+        continue;
+      }
+
+      output.add(resolved);
     }
 
     return output.join('\n');
+  }
+
+  bool _matchesAdFilter(String value, List<AdFilter> filters) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+
+    for (final filter in filters) {
+      if (!filter.enabled) continue;
+      final pattern = filter.pattern.trim().toLowerCase();
+      if (pattern.isEmpty) continue;
+      if (normalized.contains(pattern)) return true;
+    }
+
+    return false;
   }
 
   String _rewriteUriAttribute(String line, Uri base) {

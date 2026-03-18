@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../core/models/alternative_source_candidate.dart';
+import '../core/models/ad_filter.dart';
 import '../core/models/app_settings.dart';
 import '../core/models/douban_item.dart';
 import '../core/models/episode_item.dart';
@@ -102,6 +103,8 @@ class AppController extends ChangeNotifier {
         sources: sources,
         query: query.trim(),
         adultFilterEnabled: settings.adultFilterEnabled,
+        adFilteringEnabled: settings.hlsAdFilterEnabled,
+        adFilters: settings.adFilters,
         proxyBaseUrl: settings.proxyBaseUrl,
         sourceIds: sourceIds,
       );
@@ -123,6 +126,8 @@ class AppController extends ChangeNotifier {
         sources: sources,
         query: '',
         adultFilterEnabled: settings.adultFilterEnabled,
+        adFilteringEnabled: settings.hlsAdFilterEnabled,
+        adFilters: settings.adFilters,
         proxyBaseUrl: settings.proxyBaseUrl,
         sourceIds: sourceIds,
       );
@@ -175,6 +180,8 @@ class AppController extends ChangeNotifier {
       final result = await _repository.fetchDetail(
         sources: sources,
         video: item,
+        adFilteringEnabled: settings.hlsAdFilterEnabled,
+        adFilters: settings.adFilters,
         proxyBaseUrl: settings.proxyBaseUrl,
       );
       return (result.$1, result.$2);
@@ -263,6 +270,53 @@ class AppController extends ChangeNotifier {
     settings = settings.copyWith(hlsAdFilterEnabled: enabled);
     await _localStore.saveSettings(settings);
     notifyListeners();
+    unawaited(loadHomeVideos());
+  }
+
+  Future<void> addAdFilter({
+    required String pattern,
+    required AdFilterType type,
+  }) async {
+    final trimmed = pattern.trim();
+    if (trimmed.isEmpty) return;
+
+    final next = [
+      AdFilter(
+        id: 'custom_${DateTime.now().microsecondsSinceEpoch}',
+        pattern: trimmed,
+        type: type,
+      ),
+      ...settings.adFilters.where(
+        (item) =>
+            item.pattern.trim().toLowerCase() != trimmed.toLowerCase() ||
+            item.type != type,
+      ),
+    ];
+
+    settings = settings.copyWith(adFilters: next);
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+    unawaited(loadHomeVideos());
+  }
+
+  Future<void> removeAdFilter(String id) async {
+    settings = settings.copyWith(
+      adFilters: settings.adFilters.where((item) => item.id != id).toList(),
+    );
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+    unawaited(loadHomeVideos());
+  }
+
+  Future<void> toggleAdFilter(String id, bool enabled) async {
+    settings = settings.copyWith(
+      adFilters: settings.adFilters
+          .map((item) => item.id == id ? item.copyWith(enabled: enabled) : item)
+          .toList(),
+    );
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+    unawaited(loadHomeVideos());
   }
 
   Future<void> setProxyBaseUrl(String value) async {
@@ -427,6 +481,8 @@ class AppController extends ChangeNotifier {
       sources: sources,
       current: current,
       adultFilterEnabled: settings.adultFilterEnabled,
+      adFilteringEnabled: settings.hlsAdFilterEnabled,
+      adFilters: settings.adFilters,
       proxyBaseUrl: settings.proxyBaseUrl,
     );
 
