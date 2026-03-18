@@ -51,6 +51,20 @@ flutter {
     source = "../.."
 }
 
+dependencies {
+    constraints {
+        implementation("androidx.browser:browser:1.8.0") {
+            because("Keep AndroidX Browser compatible with Android Gradle Plugin 8.7.3")
+        }
+        implementation("androidx.core:core:1.15.0") {
+            because("Keep AndroidX Core compatible with Android Gradle Plugin 8.7.3")
+        }
+        implementation("androidx.core:core-ktx:1.15.0") {
+            because("Keep AndroidX Core KTX compatible with Android Gradle Plugin 8.7.3")
+        }
+    }
+}
+
 tasks.matching { it.name == "lintVitalAnalyzeRelease" }.configureEach {
     enabled = false
 }
