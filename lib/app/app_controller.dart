@@ -135,6 +135,14 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> loadDoubanHot({bool silent = false}) async {
+    if (!settings.doubanHotEnabled) {
+      doubanHotMovies = const [];
+      doubanHotTvShows = const [];
+      loadingDoubanHot = false;
+      notifyListeners();
+      return;
+    }
+
     if (!silent) {
       loadingDoubanHot = true;
       notifyListeners();
@@ -142,8 +150,14 @@ class AppController extends ChangeNotifier {
 
     try {
       final result = await Future.wait<List<DoubanItem>>([
-        _doubanApi.fetchHotMovies(proxyBaseUrl: settings.proxyBaseUrl),
-        _doubanApi.fetchHotTvShows(proxyBaseUrl: settings.proxyBaseUrl),
+        _doubanApi.fetchHotMovies(
+          proxyBaseUrl: settings.proxyBaseUrl,
+          endpoint: settings.doubanHotEndpoint,
+        ),
+        _doubanApi.fetchHotTvShows(
+          proxyBaseUrl: settings.proxyBaseUrl,
+          endpoint: settings.doubanHotEndpoint,
+        ),
       ]);
       doubanHotMovies = result[0];
       doubanHotTvShows = result[1];
@@ -212,6 +226,12 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setLoopPlayback(bool enabled) async {
+    settings = settings.copyWith(loopPlayback: enabled);
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+  }
+
   Future<void> setSubtitleEnabled(bool enabled) async {
     settings = settings.copyWith(subtitleEnabled: enabled);
     await _localStore.saveSettings(settings);
@@ -251,6 +271,31 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     unawaited(loadDoubanHot(silent: true));
     unawaited(refreshSourceSpeeds(silent: true));
+  }
+
+  Future<void> setDoubanHotEnabled(bool enabled) async {
+    settings = settings.copyWith(doubanHotEnabled: enabled);
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+    unawaited(loadDoubanHot(silent: true));
+  }
+
+  Future<void> setDoubanHotEndpoint(String value) async {
+    final endpoint = value.trim().isEmpty
+        ? AppSettings.defaultDoubanHotEndpoint
+        : value.trim();
+    settings = settings.copyWith(doubanHotEndpoint: endpoint);
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+    unawaited(loadDoubanHot(silent: true));
+  }
+
+  Future<void> setAppThemeMode(String value) async {
+    const allowed = <String>{'system', 'light', 'dark'};
+    final mode = allowed.contains(value) ? value : 'system';
+    settings = settings.copyWith(appThemeMode: mode);
+    await _localStore.saveSettings(settings);
+    notifyListeners();
   }
 
   Future<void> refreshSourceSpeeds({bool silent = false}) async {
@@ -402,6 +447,18 @@ class AppController extends ChangeNotifier {
   Future<void> clearSearchHistory() async {
     recentSearches = const [];
     await _localStore.saveSearchHistory(const []);
+    notifyListeners();
+  }
+
+  Future<void> clearWatchHistory() async {
+    history = const [];
+    await _localStore.saveHistory(const []);
+    notifyListeners();
+  }
+
+  Future<void> clearFavorites() async {
+    favorites = const [];
+    await _localStore.saveFavorites(const []);
     notifyListeners();
   }
 }

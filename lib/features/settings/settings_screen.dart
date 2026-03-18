@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_scope.dart';
+import '../../core/models/app_settings.dart';
 import '../../core/models/vod_source.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _subtitleController;
   late final TextEditingController _proxyController;
   late final TextEditingController _hlsProxyController;
+  late final TextEditingController _doubanEndpointController;
 
   @override
   void initState() {
@@ -22,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _subtitleController = TextEditingController();
     _proxyController = TextEditingController();
     _hlsProxyController = TextEditingController();
+    _doubanEndpointController = TextEditingController();
   }
 
   @override
@@ -29,12 +32,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _subtitleController.dispose();
     _proxyController.dispose();
     _hlsProxyController.dispose();
+    _doubanEndpointController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final themeMode = _normalizeThemeMode(app.settings.appThemeMode);
 
     if (_subtitleController.text != app.settings.defaultSubtitleUrl) {
       _subtitleController.text = app.settings.defaultSubtitleUrl;
@@ -45,106 +50,210 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_hlsProxyController.text != app.settings.hlsProxyBaseUrl) {
       _hlsProxyController.text = app.settings.hlsProxyBaseUrl;
     }
+    if (_doubanEndpointController.text != app.settings.doubanHotEndpoint) {
+      _doubanEndpointController.text = app.settings.doubanHotEndpoint;
+    }
 
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        SwitchListTile(
-          value: app.settings.adultFilterEnabled,
-          onChanged: app.setAdultFilter,
-          title: const Text('成人内容过滤'),
-        ),
-        SwitchListTile(
-          value: app.settings.autoPlayNext,
-          onChanged: app.setAutoPlayNext,
-          title: const Text('自动播放下一集'),
-        ),
-        SwitchListTile(
-          value: app.settings.subtitleEnabled,
-          onChanged: app.setSubtitleEnabled,
-          title: const Text('启用字幕（URL）'),
-        ),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _subtitleController,
-                decoration: const InputDecoration(
-                  labelText: '默认字幕 URL (.vtt/.srt)',
-                  border: OutlineInputBorder(),
-                ),
+        const _SectionTitle('播放器'),
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                value: app.settings.autoPlayNext,
+                onChanged: app.setAutoPlayNext,
+                title: const Text('自动播放下一集'),
               ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonal(
-              onPressed: () => app.setDefaultSubtitleUrl(_subtitleController.text),
-              child: const Text('保存'),
-            ),
-          ],
+              const Divider(height: 1),
+              SwitchListTile(
+                value: app.settings.loopPlayback,
+                onChanged: app.setLoopPlayback,
+                title: const Text('单集循环播放'),
+              ),
+            ],
+          ),
         ),
-        if (app.settings.recentSubtitleUrls.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: app.settings.recentSubtitleUrls.map((url) {
-                return ActionChip(
-                  label: SizedBox(
-                    width: 220,
-                    child: Text(url, overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 12),
+        const _SectionTitle('外观'),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('主题模式'),
+                const SizedBox(height: 8),
+                SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 'system', label: Text('跟随系统')),
+                    ButtonSegment(value: 'light', label: Text('浅色')),
+                    ButtonSegment(value: 'dark', label: Text('深色')),
+                  ],
+                  selected: {themeMode},
+                  onSelectionChanged: (next) {
+                    if (next.isEmpty) return;
+                    app.setAppThemeMode(next.first);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const _SectionTitle('字幕'),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  value: app.settings.subtitleEnabled,
+                  onChanged: app.setSubtitleEnabled,
+                  title: const Text('启用字幕（URL）'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _subtitleController,
+                        decoration: const InputDecoration(
+                          labelText: '默认字幕 URL (.vtt/.srt)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonal(
+                      onPressed: () => app.setDefaultSubtitleUrl(_subtitleController.text),
+                      child: const Text('保存'),
+                    ),
+                  ],
+                ),
+                if (app.settings.recentSubtitleUrls.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: app.settings.recentSubtitleUrls.map((url) {
+                      return ActionChip(
+                        label: SizedBox(
+                          width: 220,
+                          child: Text(url, overflow: TextOverflow.ellipsis),
+                        ),
+                        onPressed: () => app.setDefaultSubtitleUrl(url),
+                      );
+                    }).toList(),
                   ),
-                  onPressed: () => app.setDefaultSubtitleUrl(url),
-                );
-              }).toList(),
+                ],
+              ],
             ),
+          ),
         ),
         const SizedBox(height: 12),
-        const Text('网络代理', style: TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _proxyController,
-                decoration: const InputDecoration(
-                  labelText: '通用代理地址 (用于 /proxy)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.tonal(
-              onPressed: () => app.setProxyBaseUrl(_proxyController.text),
-              child: const Text('保存'),
-            ),
-          ],
+        const _SectionTitle('内容过滤'),
+        Card(
+          child: SwitchListTile(
+            value: app.settings.adultFilterEnabled,
+            onChanged: app.setAdultFilter,
+            title: const Text('成人内容过滤'),
+            subtitle: const Text('在首页、搜索结果中过滤敏感关键词内容'),
+          ),
         ),
         const SizedBox(height: 12),
-        const Text('HLS 代理', style: TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-        SwitchListTile(
-          value: app.settings.hlsAdFilterEnabled,
-          onChanged: app.setHlsAdFilterEnabled,
-          title: const Text('HLS 广告过滤（m3u8 走代理）'),
-        ),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _hlsProxyController,
-                decoration: const InputDecoration(
-                  labelText: 'HLS 代理地址 (为空时复用通用代理)',
-                  border: OutlineInputBorder(),
+        const _SectionTitle('推荐'),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  value: app.settings.doubanHotEnabled,
+                  onChanged: app.setDoubanHotEnabled,
+                  title: const Text('启用豆瓣热门推荐'),
+                  contentPadding: EdgeInsets.zero,
                 ),
-              ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _doubanEndpointController,
+                        decoration: const InputDecoration(
+                          labelText: '豆瓣接口地址',
+                          hintText: AppSettings.defaultDoubanHotEndpoint,
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonal(
+                      onPressed: () => app.setDoubanHotEndpoint(_doubanEndpointController.text),
+                      child: const Text('保存'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            FilledButton.tonal(
-              onPressed: () => app.setHlsProxyBaseUrl(_hlsProxyController.text),
-              child: const Text('保存'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const _SectionTitle('网络代理'),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _proxyController,
+                        decoration: const InputDecoration(
+                          labelText: '通用代理地址 (用于 /proxy)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonal(
+                      onPressed: () => app.setProxyBaseUrl(_proxyController.text),
+                      child: const Text('保存'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  value: app.settings.hlsAdFilterEnabled,
+                  onChanged: app.setHlsAdFilterEnabled,
+                  title: const Text('HLS 广告过滤（m3u8 走代理）'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _hlsProxyController,
+                        decoration: const InputDecoration(
+                          labelText: 'HLS 代理地址 (为空时复用通用代理)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonal(
+                      onPressed: () => app.setHlsProxyBaseUrl(_hlsProxyController.text),
+                      child: const Text('保存'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         const SizedBox(height: 16),
         Row(
@@ -161,6 +270,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('导入'),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        const _SectionTitle('数据管理'),
+        Card(
+          child: Column(
+            children: [
+              ListTile(
+                title: const Text('清空观看历史'),
+                subtitle: Text('${app.history.length} 条记录'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _confirmAndRun(
+                  context,
+                  title: '清空观看历史',
+                  message: '此操作不可恢复，是否继续？',
+                  onConfirm: app.clearWatchHistory,
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                title: const Text('清空搜索历史'),
+                subtitle: Text('${app.recentSearches.length} 条记录'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _confirmAndRun(
+                  context,
+                  title: '清空搜索历史',
+                  message: '此操作不可恢复，是否继续？',
+                  onConfirm: app.clearSearchHistory,
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                title: const Text('清空收藏'),
+                subtitle: Text('${app.favorites.length} 条记录'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _confirmAndRun(
+                  context,
+                  title: '清空收藏',
+                  message: '此操作不可恢复，是否继续？',
+                  onConfirm: app.clearFavorites,
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         Card(
@@ -225,6 +377,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _formatLatency(int? value) {
     if (value == null) return '不可达';
     return '${value}ms';
+  }
+
+  String _normalizeThemeMode(String value) {
+    if (value == 'light' || value == 'dark' || value == 'system') {
+      return value;
+    }
+    return 'system';
+  }
+
+  Future<void> _confirmAndRun(
+    BuildContext pageContext, {
+    required String title,
+    required String message,
+    required Future<void> Function() onConfirm,
+  }) async {
+    final approved = await showDialog<bool>(
+      context: pageContext,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (approved != true) return;
+    await onConfirm();
+    if (!pageContext.mounted) return;
+    ScaffoldMessenger.of(pageContext).showSnackBar(
+      SnackBar(content: Text('$title 已完成')),
+    );
   }
 
   Future<void> _showExportDialog(BuildContext context) async {
@@ -367,6 +560,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
 class _SourceGridCard extends StatelessWidget {
   const _SourceGridCard({
     required this.source,
@@ -432,7 +642,10 @@ class _SourceGridCard extends StatelessWidget {
                 Expanded(
                   child: FilledButton.tonalIcon(
                     onPressed: onDelete,
-                    icon: Icon(source.isDefault ? Icons.lock_outline : Icons.delete_outline, size: 16),
+                    icon: Icon(
+                      source.isDefault ? Icons.lock_outline : Icons.delete_outline,
+                      size: 16,
+                    ),
                     label: Text(source.isDefault ? '默认源' : '删除'),
                   ),
                 ),

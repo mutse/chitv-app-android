@@ -100,7 +100,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final candidates = _buildUrlCandidates(resolved);
         for (final uri in candidates) {
           try {
-            playerController = await _createPlayer(uri).timeout(_initializeTimeout);
+            playerController = await _createPlayer(
+              uri,
+              loopPlayback: settings.loopPlayback,
+            ).timeout(_initializeTimeout);
             break;
           } catch (e) {
             lastError = e;
@@ -155,14 +158,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   ///   - adaptive bitrate (startLevel: -1 → auto)
   ///   - retry on network / media errors
   ///   - buffering parameters comparable to HLS.js defaults
-  Future<BetterPlayerController> _createPlayer(Uri uri) async {
+  Future<BetterPlayerController> _createPlayer(
+    Uri uri, {
+    required bool loopPlayback,
+  }) async {
     final isHls = _isHlsUrl(uri.toString());
 
     // ── BetterPlayerConfiguration ──
     // Comparable to the ArtPlayer options in LibreTV (autoplay, controls, etc.)
     final configuration = BetterPlayerConfiguration(
       autoPlay: true,
-      looping: false,
+      looping: loopPlayback,
       aspectRatio: 16 / 9,
       fit: BoxFit.contain,
       handleLifecycle: true,
