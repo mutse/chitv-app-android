@@ -85,11 +85,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
               showNativeControls: true,
             );
 
-            await next.initialize();
-            await next.loadUrl(
-              url: uri.toString(),
-              headers: _buildPlaybackHeaders(uri),
-            );
+            await next.initialize().timeout(const Duration(seconds: 8));
+            await next
+                .loadUrl(
+                  url: uri.toString(),
+                  headers: _buildPlaybackHeaders(uri),
+                )
+                .timeout(const Duration(seconds: 12));
 
             controller = next;
             break;

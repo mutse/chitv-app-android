@@ -68,6 +68,7 @@
 - 工作流文件：`.github/workflows/android-build.yml`
 - 触发方式：
   - push 到 `main` / `master`
+  - push Tag（如 `v1.0.0`）会自动发布到 GitHub Release
   - 向 `main` / `master` 发起 PR
   - 在 GitHub Actions 页面手动触发（`workflow_dispatch`）
 - 构建产物：
@@ -76,5 +77,8 @@
 - 产物下载：
   - 进入对应 Actions 运行记录
   - 在 `Artifacts` 区域下载 `app-release-apk` 与 `app-release-aab`
+- Release 发布：
+  - 当 Tag 触发（`refs/tags/v*`）时，工作流会自动创建/更新同名 GitHub Release
+  - 并将 `APK/AAB` 作为 Release Assets 上传
 
 说明：当前仓库未包含 `android/` 目录，CI 中已加入自动兜底（`flutter create --platforms=android .`）。
