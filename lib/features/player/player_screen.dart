@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
-import 'package:better_native_video_player/better_native_video_player.dart';
+import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
@@ -9,6 +12,17 @@ import '../../core/models/app_settings.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
 
+/// Video player screen that uses `better_player_plus` wrapping `video_player`
+/// for native HLS (m3u8) playback — mirroring the HLS streaming approach
+/// used by LibreTV's ArtPlayer + HLS.js stack.
+///
+/// Key features ported from LibreTV player.js:
+///   * HLS adaptive bitrate (ExoPlayer on Android / AVPlayer on iOS)
+///   * Proxy-based HLS ad-filtering via server-side m3u8 rewrite
+///   * Auto-play next episode
+///   * Resume from saved position (history tracking every 5 s)
+///   * Retry & error recovery
+///   * Fullscreen with landscape lock
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
     super.key,
@@ -28,10 +42,7 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  /// Unique player ID – we use the hash of the widget to avoid collisions.
-  static int _nextPlayerId = 1;
-
-  NativeVideoPlayerController? _controller;
+  BetterPlayerController? _controller;
   bool _loading = true;
   String? _error;
   bool _endHandled = false;
@@ -40,18 +51,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _sessionStartupMs = 0;
   Timer? _historyTimer;
   int _lastSavedPosition = -1;
-  static const Duration _initializeTimeout = Duration(seconds: 20);
-  static const Duration _loadUrlTimeout = Duration(seconds: 20);
+  final Map<String, String> _localFilteredManifestCache = <String, String>{};
 
-  /// Subscriptions to player streams.
-  StreamSubscription<PlayerActivityState>? _activitySub;
-  StreamSubscription<Duration>? _positionSub;
+  static const Duration _initializeTimeout = Duration(seconds: 30);
 
   @override
   void initState() {
     super.initState();
     _initialize(widget.item.url);
   }
+
+  @override
+  void dispose() {
+    _historyTimer?.cancel();
+    _persistHistoryPosition();
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Initialization
+  // ---------------------------------------------------------------------------
 
   Future<void> _initialize(String url) async {
     final startedAt = DateTime.now();
@@ -64,68 +84,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       // Dispose previous controller if exists.
-      await _disposeController();
+      _controller?.dispose();
+      _controller = null;
 
       final rawCandidates = _buildRawPlaybackCandidates(url);
       if (rawCandidates.isEmpty) {
         throw Exception('无可用播放地址');
       }
 
-      NativeVideoPlayerController? controller;
+      BetterPlayerController? playerController;
       Object? lastError;
 
       for (final raw in rawCandidates) {
-        final resolved = _resolvePlaybackUrl(raw, settings);
+        final resolved = await _resolvePlaybackUrl(raw, settings);
         final candidates = _buildUrlCandidates(resolved);
         for (final uri in candidates) {
-          NativeVideoPlayerController? next;
           try {
-            final playerId = _nextPlayerId++;
-            next = NativeVideoPlayerController(
-              id: playerId,
-              autoPlay: true,
-              showNativeControls: true,
-            );
-
-            await next.initialize().timeout(_initializeTimeout);
-            await next
-                .loadUrl(
-                  url: uri.toString(),
-                  headers: _buildPlaybackHeaders(uri),
-                )
-                .timeout(_loadUrlTimeout);
-
-            controller = next;
+            playerController = await _createPlayer(uri).timeout(_initializeTimeout);
             break;
           } catch (e) {
-            try {
-              await next?.dispose();
-            } catch (_) {}
             lastError = e;
           }
         }
-        if (controller != null) {
-          break;
-        }
+        if (playerController != null) break;
       }
 
-      if (controller == null) {
+      if (playerController == null) {
         throw lastError ?? Exception('播放器初始化失败');
       }
 
       if (!mounted) {
-        await controller.dispose();
+        playerController.dispose();
         return;
       }
 
-      _controller = controller;
+      _controller = playerController;
       _listenToPlayer();
 
       _sessionStartupMs = DateTime.now().difference(startedAt).inMilliseconds;
-      AppScope.read(context).recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
-      setState(() {
-        _loading = false;
-      });
+      AppScope.read(context)
+          .recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
+      setState(() => _loading = false);
 
       _startHistoryTracking();
       unawaited(AppScope.read(context).addHistory(widget.item));
@@ -150,37 +149,197 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  /// Subscribe to player activity and position streams.
+  /// Create a [BetterPlayerController] pre-configured for HLS playback.
+  ///
+  /// This mirrors LibreTV's HLS.js configuration:
+  ///   - adaptive bitrate (startLevel: -1 → auto)
+  ///   - retry on network / media errors
+  ///   - buffering parameters comparable to HLS.js defaults
+  Future<BetterPlayerController> _createPlayer(Uri uri) async {
+    final isHls = _isHlsUrl(uri.toString());
+
+    // ── BetterPlayerConfiguration ──
+    // Comparable to the ArtPlayer options in LibreTV (autoplay, controls, etc.)
+    final configuration = BetterPlayerConfiguration(
+      autoPlay: true,
+      looping: false,
+      aspectRatio: 16 / 9,
+      fit: BoxFit.contain,
+      handleLifecycle: true,
+      autoDetectFullscreenAspectRatio: true,
+      autoDetectFullscreenDeviceOrientation: true,
+      allowedScreenSleep: false,
+      // Enter fullscreen in landscape, matching LibreTV behavior.
+      deviceOrientationsOnFullScreen: const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ],
+      deviceOrientationsAfterFullScreen: const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ],
+      controlsConfiguration: BetterPlayerControlsConfiguration(
+        enablePlayPause: true,
+        enableMute: true,
+        enableProgressBar: true,
+        enableProgressText: true,
+        enableFullscreen: true,
+        enableSkips: true,
+        enablePlaybackSpeed: true,
+        enableQualities: isHls, // Show quality selector only for HLS.
+        enableAudioTracks: isHls,
+        overflowMenuCustomItems: const [],
+        loadingWidget: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      ),
+      // Error widget — mirrors the "⚠️ 视频加载失败" from player.html.
+      errorBuilder: (context, errorMessage) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_amber_rounded,
+                  color: Colors.orange, size: 48),
+              const SizedBox(height: 12),
+              Text(
+                '视频加载失败',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(color: Colors.white),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                errorMessage ?? '未知错误',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '请尝试其他视频源或稍后重试',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // ── BetterPlayerDataSource ──
+    // For HLS (.m3u8) we set videoFormat to hls so that ExoPlayer / AVPlayer
+    // handles adaptive bitrate switching — same concept as HLS.js in browser.
+    final isLocalFile = uri.scheme == 'file';
+    final headers = isLocalFile ? const <String, String>{} : _buildPlaybackHeaders(uri);
+    final dataSource = BetterPlayerDataSource(
+      isLocalFile
+          ? BetterPlayerDataSourceType.file
+          : BetterPlayerDataSourceType.network,
+      isLocalFile ? uri.toFilePath() : uri.toString(),
+      videoFormat:
+          isHls ? BetterPlayerVideoFormat.hls : BetterPlayerVideoFormat.other,
+      headers: headers,
+      // Cache configuration — allows buffering ahead.
+      cacheConfiguration: const BetterPlayerCacheConfiguration(
+        useCache: true,
+        maxCacheSize: 100 * 1024 * 1024, // 100 MB cache
+        maxCacheFileSize: 20 * 1024 * 1024, // 20 MB per file
+      ),
+      // Buffer configuration mirroring HLS.js settings from LibreTV:
+      //   maxBufferLength: 30, backBufferLength: 90
+      bufferingConfiguration: const BetterPlayerBufferingConfiguration(
+        minBufferMs: 10000,
+        maxBufferMs: 60000,
+        bufferForPlaybackMs: 2500,
+        bufferForPlaybackAfterRebufferMs: 5000,
+      ),
+      // Notification configuration (for background / PiP playback).
+      notificationConfiguration: BetterPlayerNotificationConfiguration(
+        showNotification: false,
+        title: widget.item.title,
+        author: 'ChiTV',
+      ),
+    );
+
+    final controller = BetterPlayerController(
+      configuration,
+      betterPlayerDataSource: dataSource,
+    );
+
+    // Wait for the player to be initialized.
+    final completer = Completer<BetterPlayerController>();
+
+    void checkInitialized() {
+      final vp = controller.videoPlayerController;
+      if (vp != null && vp.value.initialized) {
+        completer.complete(controller);
+      }
+    }
+
+    // Listen for events to know when ready.
+    controller.addEventsListener((event) {
+      if (event.betterPlayerEventType == BetterPlayerEventType.initialized) {
+        if (!completer.isCompleted) {
+          completer.complete(controller);
+        }
+      }
+      if (event.betterPlayerEventType == BetterPlayerEventType.exception) {
+        if (!completer.isCompleted) {
+          completer.completeError(
+            Exception(event.parameters?['exception'] ?? '播放器异常'),
+          );
+        }
+      }
+    });
+
+    // Also check immediately in case it's already initialized.
+    checkInitialized();
+
+    return completer.future;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Player event listening
+  // ---------------------------------------------------------------------------
+
   void _listenToPlayer() {
     final c = _controller;
     if (c == null) return;
 
-    _activitySub = c.playerStateStream.listen((state) {
+    c.addEventsListener((event) {
       if (!mounted) return;
 
-      if (state == PlayerActivityState.completed && !_endHandled) {
-        _endHandled = true;
-        _playNextIfNeeded();
-      }
+      switch (event.betterPlayerEventType) {
+        case BetterPlayerEventType.finished:
+          if (!_endHandled) {
+            _endHandled = true;
+            _playNextIfNeeded();
+          }
+          break;
 
-      if (state == PlayerActivityState.error) {
-        debugPrint('[PlayerScreen] Player error detected');
-        // Trigger rebuild so QoS panel can update.
-        setState(() {});
-      }
+        case BetterPlayerEventType.exception:
+          debugPrint('[PlayerScreen] Player error: ${event.parameters}');
+          setState(() {});
+          break;
 
-      // Trigger rebuild for play/pause state changes.
-      if (state == PlayerActivityState.playing ||
-          state == PlayerActivityState.paused) {
-        setState(() {});
-      }
-    });
+        case BetterPlayerEventType.play:
+        case BetterPlayerEventType.pause:
+          setState(() {});
+          break;
 
-    _positionSub = c.positionStream.listen((pos) {
-      // Position stream is used for history tracking (handled by timer),
-      // but we can trigger a rebuild if QoS panel is visible.
-      if (_showQos && mounted) {
-        setState(() {});
+        case BetterPlayerEventType.bufferingStart:
+          // Track buffering for QoS.
+          AppScope.read(context).recordBufferEvent(durationMs: 0);
+          break;
+
+        case BetterPlayerEventType.progress:
+          if (_showQos && mounted) setState(() {});
+          break;
+
+        default:
+          break;
       }
     });
   }
@@ -190,31 +349,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!app.settings.autoPlayNext) return;
 
     final nextIndex = widget.currentEpisodeIndex + 1;
-    if (widget.currentEpisodeIndex < 0 || nextIndex >= widget.episodes.length) return;
+    if (widget.currentEpisodeIndex < 0 ||
+        nextIndex >= widget.episodes.length) {
+      return;
+    }
 
     _openEpisode(nextIndex);
   }
 
-  @override
-  void dispose() {
+  // ---------------------------------------------------------------------------
+  // History tracking (every 5 s)
+  // ---------------------------------------------------------------------------
+
+  void _startHistoryTracking() {
     _historyTimer?.cancel();
-    _persistHistoryPosition();
-    _activitySub?.cancel();
-    _positionSub?.cancel();
-    _controller?.dispose();
-    super.dispose();
+    _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _persistHistoryPosition();
+    });
   }
 
-  Future<void> _disposeController() async {
-    _activitySub?.cancel();
-    _activitySub = null;
-    _positionSub?.cancel();
-    _positionSub = null;
-    try {
-      await _controller?.dispose();
-    } catch (_) {}
-    _controller = null;
+  void _persistHistoryPosition() {
+    final c = _controller;
+    if (c == null) return;
+    final vp = c.videoPlayerController;
+    if (vp == null) return;
+
+    final seconds = vp.value.position.inSeconds;
+    if (seconds < 0 || seconds == _lastSavedPosition) return;
+    _lastSavedPosition = seconds;
+    unawaited(
+      AppScope.read(context).addHistory(widget.item, positionSeconds: seconds),
+    );
   }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -229,22 +399,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
             padding: const EdgeInsets.only(right: 4),
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.2),
+                  color: Colors.blue.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
-                  'Native',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.green,
-                  ),
+                  'BetterPlayer',
+                  style: TextStyle(fontSize: 10, color: Colors.blue),
                 ),
               ),
             ),
           ),
-          if (app.settings.subtitleEnabled && app.settings.defaultSubtitleUrl.isNotEmpty)
+          if (app.settings.subtitleEnabled &&
+              app.settings.defaultSubtitleUrl.isNotEmpty)
             const Padding(
               padding: EdgeInsets.only(right: 12),
               child: Center(child: Text('字幕已启用')),
@@ -285,19 +454,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 )
               : Column(
                   children: [
+                    // Player area
                     Expanded(
-                      child: Center(
-                        child: _buildPlayer(app),
-                      ),
+                      child: Center(child: _buildPlayer(app)),
                     ),
-                    if (widget.currentEpisodeIndex >= 0 && widget.episodes.isNotEmpty)
+                    // Episode navigation (prev / next)
+                    if (widget.currentEpisodeIndex >= 0 &&
+                        widget.episodes.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                         child: Row(
                           children: [
                             OutlinedButton(
                               onPressed: widget.currentEpisodeIndex > 0
-                                  ? () => _openEpisode(widget.currentEpisodeIndex - 1)
+                                  ? () => _openEpisode(
+                                      widget.currentEpisodeIndex - 1)
                                   : null,
                               child: const Text('上一集'),
                             ),
@@ -310,8 +482,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ),
                             const SizedBox(width: 12),
                             FilledButton(
-                              onPressed: widget.currentEpisodeIndex < widget.episodes.length - 1
-                                  ? () => _openEpisode(widget.currentEpisodeIndex + 1)
+                              onPressed: widget.currentEpisodeIndex <
+                                      widget.episodes.length - 1
+                                  ? () => _openEpisode(
+                                      widget.currentEpisodeIndex + 1)
                                   : null,
                               child: const Text('下一集'),
                             ),
@@ -329,11 +503,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     return Stack(
       children: [
-        NativeVideoPlayer(controller: c),
+        BetterPlayer(controller: c),
         if (_showQos) _buildQosPanel(app),
       ],
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Episode switching
+  // ---------------------------------------------------------------------------
 
   void _openEpisode(int index) {
     _persistHistoryPosition();
@@ -361,31 +539,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _startHistoryTracking() {
-    _historyTimer?.cancel();
-    _historyTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _persistHistoryPosition();
-    });
-  }
-
-  void _persistHistoryPosition() {
-    final c = _controller;
-    if (c == null) return;
-    final seconds = c.currentPosition.inSeconds;
-    if (seconds < 0 || seconds == _lastSavedPosition) return;
-    _lastSavedPosition = seconds;
-    unawaited(
-      AppScope.read(context).addHistory(widget.item, positionSeconds: seconds),
-    );
-  }
+  // ---------------------------------------------------------------------------
+  // QoS Overlay
+  // ---------------------------------------------------------------------------
 
   Widget _buildQosPanel(AppController app) {
     final c = _controller;
+    final vp = c?.videoPlayerController;
+    final pos = vp?.value.position ?? Duration.zero;
+    final dur = vp?.value.duration ?? Duration.zero;
+    final isBuffering = vp?.value.isBuffering ?? false;
+
     return Positioned(
       left: 10,
       top: 10,
       child: Container(
-        width: 220,
+        width: 260,
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.65),
@@ -396,8 +565,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('QoS Monitor', style: TextStyle(fontWeight: FontWeight.bold)),
-              const Text('引擎: Native (better_native_video_player)'),
+              const Text('QoS Monitor',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('引擎: BetterPlayer (video_player + ExoPlayer)'),
               Text('本次启动: ${_sessionStartupMs}ms'),
               Text('累计会话: ${app.qosSessionCount}'),
               Text('平均启动: ${app.qosAvgStartupMs}ms'),
@@ -405,14 +575,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Text('缓冲总时长: ${app.qosBufferTotalMs}ms'),
               Text('重试次数: ${app.qosRetryCount}'),
               Text('错误次数: ${app.qosErrorCount}'),
-              if (c != null) Text('状态: ${c.activityState.name}'),
-              if (c != null) Text('位置: ${c.currentPosition.inSeconds}s / ${c.duration.inSeconds}s'),
+              Text('正在缓冲: $isBuffering'),
+              Text('位置: ${pos.inSeconds}s / ${dur.inSeconds}s'),
             ],
           ),
         ),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // URL resolution helpers (same as before)
+  // ---------------------------------------------------------------------------
 
   List<Uri> _buildUrlCandidates(String raw) {
     final normalized = raw.trim();
@@ -431,7 +605,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       unique.add(value);
 
       final parsed = Uri.tryParse(value);
-      if (parsed != null && parsed.hasScheme && parsed.host.isNotEmpty) {
+      if (parsed != null &&
+          parsed.hasScheme &&
+          (parsed.host.isNotEmpty || parsed.scheme == 'file')) {
         result.add(parsed);
       }
 
@@ -441,7 +617,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final encodedParsed = Uri.tryParse(encodedValue);
         if (encodedParsed != null &&
             encodedParsed.hasScheme &&
-            encodedParsed.host.isNotEmpty) {
+            (encodedParsed.host.isNotEmpty || encodedParsed.scheme == 'file')) {
           result.add(encodedParsed);
         }
       }
@@ -450,7 +626,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return result;
   }
 
-  String _resolvePlaybackUrl(String rawUrl, AppSettings settings) {
+  /// Resolve HLS proxy URL if ad-filtering is enabled.
+  ///
+  /// This mirrors LibreTV's ApiService.fetchM3u8 which routes m3u8 through
+  /// the server proxy at `/hls/proxy?url=...` for ad-segment filtering.
+  Future<String> _resolvePlaybackUrl(String rawUrl, AppSettings settings) async {
     final normalized = rawUrl.trim();
     if (normalized.isEmpty) return normalized;
 
@@ -460,11 +640,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final proxyBase = settings.hlsProxyBaseUrl.trim().isNotEmpty
         ? settings.hlsProxyBaseUrl.trim()
         : settings.proxyBaseUrl.trim();
-    if (proxyBase.isEmpty) return normalized;
+    if (proxyBase.isEmpty) {
+      return _buildLocalFilteredManifest(normalized);
+    }
 
     final baseUri = Uri.tryParse(proxyBase);
     if (baseUri == null || !baseUri.hasScheme || baseUri.host.isEmpty) {
-      return normalized;
+      return _buildLocalFilteredManifest(normalized);
     }
 
     final existingUri = Uri.tryParse(normalized);
@@ -497,8 +679,96 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return '$l$r';
   }
 
+  Future<String> _buildLocalFilteredManifest(String sourceUrl) async {
+    if (_localFilteredManifestCache.containsKey(sourceUrl)) {
+      return _localFilteredManifestCache[sourceUrl]!;
+    }
+
+    final sourceUri = Uri.tryParse(sourceUrl);
+    if (sourceUri == null || !sourceUri.hasScheme || sourceUri.host.isEmpty) {
+      return sourceUrl;
+    }
+
+    try {
+      final response = await http
+          .get(
+            sourceUri,
+            headers: _buildPlaybackHeaders(sourceUri),
+          )
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) return sourceUrl;
+
+      final body = response.body;
+      if (!body.trimLeft().startsWith('#EXTM3U')) return sourceUrl;
+
+      final filtered = _filterAdsFromM3u8(body, sourceUri);
+      if (filtered.trim().isEmpty) return sourceUrl;
+
+      final file = File(
+        '${Directory.systemTemp.path}/chitv_filtered_${DateTime.now().microsecondsSinceEpoch}.m3u8',
+      );
+      await file.writeAsString(filtered, flush: true);
+
+      final localUri = file.uri.toString();
+      _localFilteredManifestCache[sourceUrl] = localUri;
+      return localUri;
+    } catch (_) {
+      return sourceUrl;
+    }
+  }
+
+  String _filterAdsFromM3u8(String content, Uri sourceUri) {
+    final lines = content.split('\n');
+    final output = <String>[];
+    final base = sourceUri.resolve('./');
+
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) {
+        output.add(rawLine);
+        continue;
+      }
+
+      // 对齐 LibreTV 规则：去掉 #EXT-X-DISCONTINUITY 行。
+      if (line.contains('#EXT-X-DISCONTINUITY')) {
+        continue;
+      }
+
+      if (line.startsWith('#EXT-X-KEY') || line.startsWith('#EXT-X-MAP')) {
+        output.add(_rewriteUriAttribute(line, base));
+        continue;
+      }
+
+      if (line.startsWith('#')) {
+        output.add(rawLine);
+        continue;
+      }
+
+      output.add(base.resolve(line).toString());
+    }
+
+    return output.join('\n');
+  }
+
+  String _rewriteUriAttribute(String line, Uri base) {
+    final re = RegExp(r'URI="([^"]+)"');
+    final match = re.firstMatch(line);
+    if (match == null) return line;
+
+    final original = match.group(1) ?? '';
+    if (original.isEmpty) return line;
+    final rewritten = base.resolve(original).toString();
+    return line.replaceFirst('URI="$original"', 'URI="$rewritten"');
+  }
+
+  /// Build HTTP headers for playback.
+  ///
+  /// These headers mimic a browser request (matching what LibreTV's HLS.js
+  /// would send) so that CDNs accept the request.
   Map<String, String> _buildPlaybackHeaders(Uri uri) {
-    final origin = uri.hasScheme && uri.host.isNotEmpty ? '${uri.scheme}://${uri.host}' : '';
+    final origin = uri.hasScheme && uri.host.isNotEmpty
+        ? '${uri.scheme}://${uri.host}'
+        : '';
     final referer = origin.isEmpty ? '' : '$origin/';
 
     return {
@@ -533,7 +803,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final raw = widget.item.vodPlayUrl?.trim() ?? '';
     if (raw.isEmpty) return const [];
 
-    final targetIndex = widget.currentEpisodeIndex >= 0 ? widget.currentEpisodeIndex : 0;
+    final targetIndex =
+        widget.currentEpisodeIndex >= 0 ? widget.currentEpisodeIndex : 0;
     final output = <String>[];
 
     final sources = raw.split(r'$$$');
@@ -541,10 +812,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final s = source.trim();
       if (s.isEmpty) continue;
       final delimiter = s.contains('#') ? '#' : '|';
-      final entries = s.split(delimiter).map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      final entries = s
+          .split(delimiter)
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
       if (entries.isEmpty) continue;
 
-      final episodeEntry = targetIndex < entries.length ? entries[targetIndex] : entries.first;
+      final episodeEntry =
+          targetIndex < entries.length ? entries[targetIndex] : entries.first;
       final parsed = _extractPlayableFromEpisodeEntry(episodeEntry);
       if (parsed.isNotEmpty) {
         output.add(parsed);
@@ -560,9 +836,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (normalized.isEmpty) return '';
 
     final splitAt = normalized.indexOf(r'$');
-    var url = splitAt == -1
-        ? normalized
-        : normalized.substring(splitAt + 1).trim();
+    var url =
+        splitAt == -1 ? normalized : normalized.substring(splitAt + 1).trim();
 
     url = url.replaceAll(r'\/', '/');
     if (url.startsWith('//')) {
