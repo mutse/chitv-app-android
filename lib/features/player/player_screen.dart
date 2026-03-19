@@ -1,17 +1,15 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
-import '../../core/models/ad_filter.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
+import '../../core/utils/hls_ad_filter.dart';
 
 /// Video player screen that uses `better_player_plus` wrapping `video_player`
 /// for native HLS (m3u8) playback — mirroring the HLS streaming approach
@@ -53,7 +51,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _sessionStartupMs = 0;
   Timer? _historyTimer;
   int _lastSavedPosition = -1;
-  final Map<String, String> _localFilteredManifestCache = <String, String>{};
 
   static const Duration _initializeTimeout = Duration(seconds: 30);
 
@@ -764,108 +761,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
     String sourceUrl, {
     required AppSettings settings,
   }) async {
-    if (_localFilteredManifestCache.containsKey(sourceUrl)) {
-      return _localFilteredManifestCache[sourceUrl]!;
-    }
-
     final sourceUri = Uri.tryParse(sourceUrl);
     if (sourceUri == null || !sourceUri.hasScheme || sourceUri.host.isEmpty) {
       return sourceUrl;
     }
 
     try {
-      final response = await http
-          .get(sourceUri, headers: _buildPlaybackHeaders(sourceUri))
-          .timeout(const Duration(seconds: 12));
-      if (response.statusCode != 200) return sourceUrl;
-
-      final body = response.body;
-      if (!body.trimLeft().startsWith('#EXTM3U')) return sourceUrl;
-
-      final filtered = _filterAdsFromM3u8(body, sourceUri, settings: settings);
-      if (filtered.trim().isEmpty) return sourceUrl;
-
-      final file = File(
-        '${Directory.systemTemp.path}/chitv_filtered_${DateTime.now().microsecondsSinceEpoch}.m3u8',
+      return await HlsAdFilter.instance.processUrl(
+        sourceUrl,
+        headers: _buildPlaybackHeaders(sourceUri),
+        filterEnabled: settings.hlsAdFilterEnabled,
       );
-      await file.writeAsString(filtered, flush: true);
-
-      final localUri = file.uri.toString();
-      _localFilteredManifestCache[sourceUrl] = localUri;
-      return localUri;
     } catch (_) {
       return sourceUrl;
     }
-  }
-
-  String _filterAdsFromM3u8(
-    String content,
-    Uri sourceUri, {
-    required AppSettings settings,
-  }) {
-    final lines = content.split('\n');
-    final output = <String>[];
-    final base = sourceUri.resolve('./');
-
-    for (final rawLine in lines) {
-      final line = rawLine.trim();
-      if (line.isEmpty) {
-        output.add(rawLine);
-        continue;
-      }
-
-      // 对齐 LibreTV 规则：去掉 #EXT-X-DISCONTINUITY 行。
-      if (line.contains('#EXT-X-DISCONTINUITY')) {
-        continue;
-      }
-
-      if (line.startsWith('#EXT-X-KEY') || line.startsWith('#EXT-X-MAP')) {
-        output.add(_rewriteUriAttribute(line, base));
-        continue;
-      }
-
-      if (line.startsWith('#')) {
-        output.add(rawLine);
-        continue;
-      }
-
-      final resolved = base.resolve(line).toString();
-      if (_matchesAdFilter(resolved, settings.adFilters)) {
-        if (output.isNotEmpty && output.last.trim().startsWith('#EXTINF')) {
-          output.removeLast();
-        }
-        continue;
-      }
-
-      output.add(resolved);
-    }
-
-    return output.join('\n');
-  }
-
-  bool _matchesAdFilter(String value, List<AdFilter> filters) {
-    final normalized = value.trim().toLowerCase();
-    if (normalized.isEmpty) return false;
-
-    for (final filter in filters) {
-      if (!filter.enabled) continue;
-      final pattern = filter.pattern.trim().toLowerCase();
-      if (pattern.isEmpty) continue;
-      if (normalized.contains(pattern)) return true;
-    }
-
-    return false;
-  }
-
-  String _rewriteUriAttribute(String line, Uri base) {
-    final re = RegExp(r'URI="([^"]+)"');
-    final match = re.firstMatch(line);
-    if (match == null) return line;
-
-    final original = match.group(1) ?? '';
-    if (original.isEmpty) return line;
-    final rewritten = base.resolve(original).toString();
-    return line.replaceFirst('URI="$original"', 'URI="$rewritten"');
   }
 
   /// Build HTTP headers for playback.
@@ -874,7 +783,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// would send) so that CDNs accept the request.
   Map<String, String> _buildPlaybackHeaders(Uri uri) {
     final origin = uri.hasScheme && uri.host.isNotEmpty
-        ? '${uri.scheme}://${uri.host}'
+        ? '${uri.scheme}://${uri.authority}'
         : '';
     final referer = origin.isEmpty ? '' : '$origin/';
 
