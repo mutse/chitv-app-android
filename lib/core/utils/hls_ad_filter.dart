@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -379,55 +380,113 @@ class HlsAdFilter {
     HttpRequest request,
     _ProxyResource resource,
   ) async {
+    final targetUri = Uri.parse(resource.sourceUrl);
+    final client = http.Client();
     try {
-      final response = await http
-          .get(Uri.parse(resource.sourceUrl), headers: resource.headers)
+      final outbound = http.Request(request.method, targetUri)
+        ..headers.addAll(
+          _buildForwardHeaders(targetUri, resource.headers, request.headers),
+        );
+      final response = await client
+          .send(outbound)
           .timeout(const Duration(seconds: 20));
 
-      if (_looksLikePlaylist(
-        resource.sourceUrl,
-        response.body,
-        response,
-        forceManifest: resource.forceManifest,
-      )) {
-        final filtered = resource.filterEnabled
-            ? filterAdsFromM3u8(response.body)
-            : response.body;
-        final rewritten = _rewritePlaylistReferences(
-          filtered,
+      final isPlaylistByUrl =
+          resource.forceManifest ||
+          targetUri.path.toLowerCase().endsWith('.m3u8') ||
+          targetUri.path.toLowerCase().endsWith('.m3u') ||
+          targetUri.query.toLowerCase().contains('m3u8');
+      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+      final isPlaylistByHeader =
+          contentType.contains('mpegurl') || contentType.contains('m3u');
+
+      if (isPlaylistByUrl || isPlaylistByHeader) {
+        final bodyBytes = await response.stream.toBytes();
+        final body = utf8.decode(bodyBytes, allowMalformed: true);
+        if (_looksLikePlaylist(
           resource.sourceUrl,
-          resource.headers,
-          filterEnabled: resource.filterEnabled,
+          body,
+          response,
+          forceManifest: resource.forceManifest,
+        )) {
+          final filtered = resource.filterEnabled
+              ? filterAdsFromM3u8(body)
+              : body;
+          final rewritten = _rewritePlaylistReferences(
+            filtered,
+            resource.sourceUrl,
+            resource.headers,
+            filterEnabled: resource.filterEnabled,
+          );
+          request.response.statusCode = response.statusCode;
+          request.response.headers.contentType = ContentType.parse(
+            'application/vnd.apple.mpegurl',
+          );
+          request.response.headers.set('Access-Control-Allow-Origin', '*');
+          request.response.write(rewritten);
+          await request.response.close();
+          return;
+        }
+
+        await _writeBinaryResponse(
+          request,
+          statusCode: response.statusCode,
+          bodyBytes: bodyBytes,
+          contentTypeHeader: response.headers['content-type'],
         );
-        request.response.statusCode = response.statusCode;
-        request.response.headers.contentType = ContentType.parse(
-          'application/vnd.apple.mpegurl',
-        );
-        request.response.headers.set('Access-Control-Allow-Origin', '*');
-        request.response.write(rewritten);
-        await request.response.close();
         return;
       }
 
-      await _writeBinaryResponse(
+      await _writeStreamedResponse(
         request,
         statusCode: response.statusCode,
-        bodyBytes: response.bodyBytes,
+        stream: response.stream,
         contentTypeHeader: response.headers['content-type'],
+        contentLength: response.contentLength,
+        contentRange: response.headers['content-range'],
+        acceptRanges: response.headers['accept-ranges'],
       );
     } catch (e) {
       debugPrint('[HlsAdFilter] Resource proxy error: $e');
       request.response.statusCode = 502;
       request.response.write('Failed to proxy resource');
       await request.response.close();
+    } finally {
+      client.close();
     }
   }
 
-  Future<void> _writeBinaryResponse(
+  Map<String, String> _buildForwardHeaders(
+    Uri targetUri,
+    Map<String, String> storedHeaders,
+    HttpHeaders inboundHeaders,
+  ) {
+    final headers = <String, String>{...storedHeaders};
+    final origin = '${targetUri.scheme}://${targetUri.authority}';
+    headers['Origin'] = origin;
+    headers['Referer'] = '$origin/';
+
+    final range = inboundHeaders.value(HttpHeaders.rangeHeader);
+    if (range != null && range.isNotEmpty) {
+      headers[HttpHeaders.rangeHeader] = range;
+    }
+
+    final accept = inboundHeaders.value(HttpHeaders.acceptHeader);
+    if (accept != null && accept.isNotEmpty) {
+      headers[HttpHeaders.acceptHeader] = accept;
+    }
+
+    return headers;
+  }
+
+  Future<void> _writeStreamedResponse(
     HttpRequest request, {
     required int statusCode,
-    required Uint8List bodyBytes,
+    required Stream<List<int>> stream,
     String? contentTypeHeader,
+    int? contentLength,
+    String? contentRange,
+    String? acceptRanges,
   }) async {
     request.response.statusCode = statusCode;
     if (contentTypeHeader != null && contentTypeHeader.isNotEmpty) {
@@ -437,9 +496,38 @@ class HlsAdFilter {
         );
       } catch (_) {}
     }
+    if (contentLength != null && contentLength >= 0) {
+      request.response.contentLength = contentLength;
+    }
+    if (contentRange != null && contentRange.isNotEmpty) {
+      request.response.headers.set(
+        HttpHeaders.contentRangeHeader,
+        contentRange,
+      );
+    }
+    if (acceptRanges != null && acceptRanges.isNotEmpty) {
+      request.response.headers.set(
+        HttpHeaders.acceptRangesHeader,
+        acceptRanges,
+      );
+    }
     request.response.headers.set('Access-Control-Allow-Origin', '*');
-    request.response.add(bodyBytes);
-    await request.response.close();
+    await stream.pipe(request.response);
+  }
+
+  Future<void> _writeBinaryResponse(
+    HttpRequest request, {
+    required int statusCode,
+    required Uint8List bodyBytes,
+    String? contentTypeHeader,
+  }) async {
+    await _writeStreamedResponse(
+      request,
+      statusCode: statusCode,
+      stream: Stream<List<int>>.value(bodyBytes),
+      contentTypeHeader: contentTypeHeader,
+      contentLength: bodyBytes.length,
+    );
   }
 
   // ---------------------------------------------------------------------------
