@@ -1,16 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
-import '../../app/app_theme.dart';
+import '../../core/models/ad_filter.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
-import '../../core/utils/hls_ad_filter.dart';
 
 /// Video player screen that uses `better_player_plus` wrapping `video_player`
 /// for native HLS (m3u8) playback — mirroring the HLS streaming approach
@@ -52,6 +53,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _sessionStartupMs = 0;
   Timer? _historyTimer;
   int _lastSavedPosition = -1;
+  final Map<String, String> _localFilteredManifestCache = <String, String>{};
 
   static const Duration _initializeTimeout = Duration(seconds: 30);
 
@@ -416,32 +418,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       },
       child: Scaffold(
-        extendBodyBehindAppBar: true,
         appBar: _isFullScreen
             ? null
             : AppBar(
                 title: Text(widget.item.title),
                 actions: [
-                  if (app.settings.subtitleEnabled &&
-                      app.settings.defaultSubtitleUrl.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Text(
-                            '字幕已启用',
-                            style: TextStyle(fontSize: 11),
-                          ),
+                  // Engine badge
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'BetterPlayer',
+                          style: TextStyle(fontSize: 10, color: Colors.blue),
                         ),
                       ),
+                    ),
+                  ),
+                  if (app.settings.subtitleEnabled &&
+                      app.settings.defaultSubtitleUrl.isNotEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 12),
+                      child: Center(child: Text('字幕已启用')),
                     ),
                   IconButton(
                     onPressed: _toggleFullScreen,
@@ -459,188 +465,79 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ],
               ),
-        body: ChiTvBackground(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.warning_amber_rounded,
-                                  size: 44,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  '播放出现问题',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _error!,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                                const SizedBox(height: 16),
-                                FilledButton.icon(
-                                  onPressed: () {
-                                    _retry = 0;
-                                    _initialize(widget.item.url);
-                                  },
-                                  icon: const Icon(Icons.refresh, size: 16),
-                                  label: const Text('重新加载'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 14),
                       ),
-                    )
-                  : SafeArea(
-                      child: Column(
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () {
+                          _retry = 0;
+                          _initialize(widget.item.url);
+                        },
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : Column(
+                children: [
+                  // Player area
+                  Expanded(child: Center(child: _buildPlayer(app))),
+                  // Episode navigation (prev / next)
+                  if (!_isFullScreen &&
+                      widget.currentEpisodeIndex >= 0 &&
+                      widget.episodes.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: Row(
                         children: [
+                          OutlinedButton(
+                            onPressed: widget.currentEpisodeIndex > 0
+                                ? () => _openEpisode(
+                                    widget.currentEpisodeIndex - 1,
+                                  )
+                                : null,
+                            child: const Text('上一集'),
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                              child: Card(
-                                clipBehavior: Clip.antiAlias,
-                                child: Column(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  widget.seriesTitle ?? widget.item.title,
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .titleMedium
-                                                      ?.copyWith(
-                                                        fontWeight: FontWeight.w700,
-                                                      ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Wrap(
-                                                  spacing: 8,
-                                                  runSpacing: 8,
-                                                  children: [
-                                                    _InfoPill(
-                                                      icon: Icons.play_circle_outline,
-                                                      label: 'BetterPlayer',
-                                                    ),
-                                                    _InfoPill(
-                                                      icon: Icons.source_outlined,
-                                                      label: widget.item.sourceId,
-                                                    ),
-                                                    if (widget.currentEpisodeIndex >= 0)
-                                                      _InfoPill(
-                                                        icon: Icons.movie_outlined,
-                                                        label:
-                                                            '第 ${widget.currentEpisodeIndex + 1} 集',
-                                                      ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Expanded(child: Center(child: _buildPlayer(app))),
-                                  ],
-                                ),
-                              ),
+                            child: Text(
+                              '第 ${widget.currentEpisodeIndex + 1} / ${widget.episodes.length} 集',
+                              textAlign: TextAlign.center,
                             ),
                           ),
-                          if (!_isFullScreen)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-                              child: Card(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(14),
-                                  child: Column(
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              widget.currentEpisodeIndex >= 0 &&
-                                                      widget.episodes.isNotEmpty
-                                                  ? '第 ${widget.currentEpisodeIndex + 1} / ${widget.episodes.length} 集'
-                                                  : '单视频播放',
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleSmall
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                            ),
-                                          ),
-                                          IconButton.filledTonal(
-                                            onPressed: () =>
-                                                setState(() => _showQos = !_showQos),
-                                            icon: const Icon(Icons.query_stats),
-                                            tooltip: 'QoS',
-                                          ),
-                                        ],
-                                      ),
-                                      if (widget.currentEpisodeIndex >= 0 &&
-                                          widget.episodes.isNotEmpty) ...[
-                                        const SizedBox(height: 10),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: OutlinedButton.icon(
-                                                onPressed: widget.currentEpisodeIndex > 0
-                                                    ? () => _openEpisode(
-                                                          widget.currentEpisodeIndex - 1,
-                                                        )
-                                                    : null,
-                                                icon: const Icon(Icons.chevron_left),
-                                                label: const Text('上一集'),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: FilledButton.icon(
-                                                onPressed:
-                                                    widget.currentEpisodeIndex <
-                                                            widget.episodes.length - 1
-                                                        ? () => _openEpisode(
-                                                              widget.currentEpisodeIndex + 1,
-                                                            )
-                                                        : null,
-                                                icon: const Icon(Icons.chevron_right),
-                                                label: const Text('下一集'),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
+                          const SizedBox(width: 12),
+                          FilledButton(
+                            onPressed:
+                                widget.currentEpisodeIndex <
+                                    widget.episodes.length - 1
+                                ? () => _openEpisode(
+                                    widget.currentEpisodeIndex + 1,
+                                  )
+                                : null,
+                            child: const Text('下一集'),
+                          ),
                         ],
                       ),
                     ),
-        ),
+                ],
+              ),
       ),
     );
   }
@@ -734,11 +631,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       top: 10,
       child: Container(
         width: 260,
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: context.chitvTheme.overlayPanelHeavy.withValues(alpha: 0.88),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          color: Colors.black.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: DefaultTextStyle(
           style: const TextStyle(color: Colors.white, fontSize: 12),
@@ -868,20 +764,108 @@ class _PlayerScreenState extends State<PlayerScreen> {
     String sourceUrl, {
     required AppSettings settings,
   }) async {
+    if (_localFilteredManifestCache.containsKey(sourceUrl)) {
+      return _localFilteredManifestCache[sourceUrl]!;
+    }
+
     final sourceUri = Uri.tryParse(sourceUrl);
     if (sourceUri == null || !sourceUri.hasScheme || sourceUri.host.isEmpty) {
       return sourceUrl;
     }
 
     try {
-      return await HlsAdFilter.instance.processUrl(
-        sourceUrl,
-        headers: _buildPlaybackHeaders(sourceUri),
-        filterEnabled: settings.hlsAdFilterEnabled,
+      final response = await http
+          .get(sourceUri, headers: _buildPlaybackHeaders(sourceUri))
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) return sourceUrl;
+
+      final body = response.body;
+      if (!body.trimLeft().startsWith('#EXTM3U')) return sourceUrl;
+
+      final filtered = _filterAdsFromM3u8(body, sourceUri, settings: settings);
+      if (filtered.trim().isEmpty) return sourceUrl;
+
+      final file = File(
+        '${Directory.systemTemp.path}/chitv_filtered_${DateTime.now().microsecondsSinceEpoch}.m3u8',
       );
+      await file.writeAsString(filtered, flush: true);
+
+      final localUri = file.uri.toString();
+      _localFilteredManifestCache[sourceUrl] = localUri;
+      return localUri;
     } catch (_) {
       return sourceUrl;
     }
+  }
+
+  String _filterAdsFromM3u8(
+    String content,
+    Uri sourceUri, {
+    required AppSettings settings,
+  }) {
+    final lines = content.split('\n');
+    final output = <String>[];
+    final base = sourceUri.resolve('./');
+
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) {
+        output.add(rawLine);
+        continue;
+      }
+
+      // 对齐 LibreTV 规则：去掉 #EXT-X-DISCONTINUITY 行。
+      if (line.contains('#EXT-X-DISCONTINUITY')) {
+        continue;
+      }
+
+      if (line.startsWith('#EXT-X-KEY') || line.startsWith('#EXT-X-MAP')) {
+        output.add(_rewriteUriAttribute(line, base));
+        continue;
+      }
+
+      if (line.startsWith('#')) {
+        output.add(rawLine);
+        continue;
+      }
+
+      final resolved = base.resolve(line).toString();
+      if (_matchesAdFilter(resolved, settings.adFilters)) {
+        if (output.isNotEmpty && output.last.trim().startsWith('#EXTINF')) {
+          output.removeLast();
+        }
+        continue;
+      }
+
+      output.add(resolved);
+    }
+
+    return output.join('\n');
+  }
+
+  bool _matchesAdFilter(String value, List<AdFilter> filters) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+
+    for (final filter in filters) {
+      if (!filter.enabled) continue;
+      final pattern = filter.pattern.trim().toLowerCase();
+      if (pattern.isEmpty) continue;
+      if (normalized.contains(pattern)) return true;
+    }
+
+    return false;
+  }
+
+  String _rewriteUriAttribute(String line, Uri base) {
+    final re = RegExp(r'URI="([^"]+)"');
+    final match = re.firstMatch(line);
+    if (match == null) return line;
+
+    final original = match.group(1) ?? '';
+    if (original.isEmpty) return line;
+    final rewritten = base.resolve(original).toString();
+    return line.replaceFirst('URI="$original"', 'URI="$rewritten"');
   }
 
   /// Build HTTP headers for playback.
@@ -890,7 +874,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// would send) so that CDNs accept the request.
   Map<String, String> _buildPlaybackHeaders(Uri uri) {
     final origin = uri.hasScheme && uri.host.isNotEmpty
-        ? '${uri.scheme}://${uri.authority}'
+        ? '${uri.scheme}://${uri.host}'
         : '';
     final referer = origin.isEmpty ? '' : '$origin/';
 
@@ -980,41 +964,5 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     return url;
-  }
-}
-
-class _InfoPill extends StatelessWidget {
-  const _InfoPill({
-    required this.icon,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.primary,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

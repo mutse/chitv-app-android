@@ -729,7 +729,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   onPressed: () => _openDetail(context, item),
                                   icon: const Icon(Icons.play_arrow),
-                                  label: const Text('播放'),
+                                  label: const Text(''),
                                 ),
                               ],
                             ),
@@ -1425,7 +1425,7 @@ class _VideoGridCard extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: onPlay,
                     icon: const Icon(Icons.play_arrow, size: 16),
-                    label: const Text('播放'),
+                    label: const Text(''),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1433,7 +1433,7 @@ class _VideoGridCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onDetail,
                     icon: const Icon(Icons.list, size: 16),
-                    label: const Text('详情'),
+                    label: const Text(''),
                   ),
                 ),
               ],

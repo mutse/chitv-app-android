@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -34,8 +33,8 @@ class HlsAdFilter {
   HttpServer? _server;
   int _port = 0;
 
-  /// Registered proxy resources keyed by path token.
-  final Map<String, _ProxyResource> _cache = {};
+  /// Cached filtered m3u8 content keyed by path token.
+  final Map<String, _FilteredManifest> _cache = {};
 
   int _nextId = 0;
 
@@ -83,12 +82,46 @@ class HlsAdFilter {
     }
 
     await ensureStarted();
-    return _registerProxyUrl(
-      originalUrl,
-      headers: headers,
-      filterEnabled: filterEnabled,
-      forceManifest: true,
-    );
+
+    try {
+      final response = await http
+          .get(Uri.parse(originalUrl), headers: headers)
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        debugPrint(
+            '[HlsAdFilter] Failed to fetch manifest: ${response.statusCode}');
+        return originalUrl;
+      }
+
+      final body = response.body;
+
+      // Check if this is a master playlist (contains #EXT-X-STREAM-INF)
+      // vs. a media playlist (contains #EXTINF).
+      final isMasterPlaylist = body.contains('#EXT-X-STREAM-INF');
+
+      String filtered;
+      if (isMasterPlaylist) {
+        // For master playlists, rewrite sub-playlist URLs to go through
+        // our local proxy so we can filter each quality level too.
+        filtered = _rewriteMasterPlaylist(body, originalUrl, headers);
+      } else {
+        // For media playlists, apply ad filtering.
+        filtered = filterAdsFromM3u8(body);
+        filtered = _rewriteSegmentUrls(filtered, originalUrl);
+      }
+
+      final id = '${_nextId++}';
+      _cache[id] = _FilteredManifest(
+        content: filtered,
+        contentType: 'application/vnd.apple.mpegurl',
+      );
+
+      return 'http://127.0.0.1:$_port/m3u8/$id';
+    } catch (e) {
+      debugPrint('[HlsAdFilter] Error processing m3u8: $e');
+      return originalUrl;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -263,271 +296,93 @@ class HlsAdFilter {
   // URL rewriting
   // ---------------------------------------------------------------------------
 
-  String _rewritePlaylistReferences(
-    String content,
-    String manifestUrl,
-    Map<String, String>? headers, {
-    required bool filterEnabled,
-  }) {
+  /// Rewrite relative segment URLs to absolute URLs based on the
+  /// original m3u8 manifest URL.
+  static String _rewriteSegmentUrls(String content, String manifestUrl) {
     final manifestUri = Uri.parse(manifestUrl);
+    final baseUrl = _getBaseUrl(manifestUri);
+
     final lines = content.split('\n');
     final rewritten = <String>[];
 
     for (final line in lines) {
       final trimmed = line.trim();
-      if (trimmed.isEmpty) {
+      if (trimmed.isEmpty || trimmed.startsWith('#')) {
         rewritten.add(line);
         continue;
       }
 
-      if (trimmed.startsWith('#')) {
-        rewritten.add(
-          _rewriteUriAttributes(
-            line,
-            manifestUri,
-            headers,
-            filterEnabled: filterEnabled,
-          ),
-        );
-        continue;
+      // This is a segment URL — make it absolute if relative.
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        rewritten.add(line);
+      } else if (trimmed.startsWith('/')) {
+        // Absolute path — prepend scheme + host.
+        final absolute =
+            '${manifestUri.scheme}://${manifestUri.host}$trimmed';
+        rewritten.add(absolute);
+      } else {
+        // Relative path — resolve against base URL.
+        rewritten.add('$baseUrl/$trimmed');
       }
-
-      final absolute = manifestUri.resolve(trimmed).toString();
-      rewritten.add(
-        _registerProxyUrl(
-          absolute,
-          headers: headers,
-          filterEnabled: filterEnabled,
-        ),
-      );
     }
 
     return rewritten.join('\n');
   }
 
-  String _rewriteUriAttributes(
-    String line,
-    Uri baseUri,
-    Map<String, String>? headers, {
-    required bool filterEnabled,
-  }) {
-    return line.replaceAllMapped(RegExp(r'URI="([^"]+)"'), (match) {
-      final original = match.group(1) ?? '';
-      if (original.isEmpty) return match.group(0) ?? '';
-      final absolute = baseUri.resolve(original).toString();
-      final proxied = _registerProxyUrl(
-        absolute,
-        headers: headers,
-        filterEnabled: filterEnabled,
-      );
-      return 'URI="$proxied"';
-    });
-  }
-
-  String _registerProxyUrl(
-    String url, {
+  /// Rewrite a master playlist so that sub-playlist URLs go through our
+  /// local proxy for filtering.
+  String _rewriteMasterPlaylist(
+    String content,
+    String masterUrl,
     Map<String, String>? headers,
-    required bool filterEnabled,
-    bool forceManifest = false,
-  }) {
-    final normalizedHeaders = headers == null || headers.isEmpty
-        ? const <String, String>{}
-        : Map<String, String>.unmodifiable(Map<String, String>.from(headers));
-
-    for (final entry in _cache.entries) {
-      final resource = entry.value;
-      if (resource.sourceUrl == url &&
-          mapEquals(resource.headers, normalizedHeaders) &&
-          resource.filterEnabled == filterEnabled &&
-          resource.forceManifest == forceManifest) {
-        return 'http://127.0.0.1:$_port/proxy/${entry.key}';
-      }
-    }
-
-    final id = '${_nextId++}';
-    _cache[id] = _ProxyResource(
-      sourceUrl: url,
-      headers: normalizedHeaders,
-      filterEnabled: filterEnabled,
-      forceManifest: forceManifest,
-    );
-    return 'http://127.0.0.1:$_port/proxy/$id';
-  }
-
-  bool _looksLikePlaylist(
-    String url,
-    String body,
-    http.BaseResponse response, {
-    required bool forceManifest,
-  }) {
-    if (forceManifest) return true;
-    final lowerUrl = url.toLowerCase();
-    if (lowerUrl.contains('.m3u8') ||
-        lowerUrl.contains('type=m3u8') ||
-        lowerUrl.endsWith('.m3u')) {
-      return true;
-    }
-
-    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
-    if (contentType.contains('mpegurl') || contentType.contains('m3u')) {
-      return true;
-    }
-
-    return body.trimLeft().startsWith('#EXTM3U');
-  }
-
-  Future<void> _proxyRemoteResource(
-    HttpRequest request,
-    _ProxyResource resource,
-  ) async {
-    final targetUri = Uri.parse(resource.sourceUrl);
-    final client = http.Client();
-    try {
-      final outbound = http.Request(request.method, targetUri)
-        ..headers.addAll(
-          _buildForwardHeaders(targetUri, resource.headers, request.headers),
-        );
-      final response = await client
-          .send(outbound)
-          .timeout(const Duration(seconds: 20));
-
-      final isPlaylistByUrl =
-          resource.forceManifest ||
-          targetUri.path.toLowerCase().endsWith('.m3u8') ||
-          targetUri.path.toLowerCase().endsWith('.m3u') ||
-          targetUri.query.toLowerCase().contains('m3u8');
-      final contentType = response.headers['content-type']?.toLowerCase() ?? '';
-      final isPlaylistByHeader =
-          contentType.contains('mpegurl') || contentType.contains('m3u');
-
-      if (isPlaylistByUrl || isPlaylistByHeader) {
-        final bodyBytes = await response.stream.toBytes();
-        final body = utf8.decode(bodyBytes, allowMalformed: true);
-        if (_looksLikePlaylist(
-          resource.sourceUrl,
-          body,
-          response,
-          forceManifest: resource.forceManifest,
-        )) {
-          final filtered = resource.filterEnabled
-              ? filterAdsFromM3u8(body)
-              : body;
-          final rewritten = _rewritePlaylistReferences(
-            filtered,
-            resource.sourceUrl,
-            resource.headers,
-            filterEnabled: resource.filterEnabled,
-          );
-          request.response.statusCode = response.statusCode;
-          request.response.headers.contentType = ContentType.parse(
-            'application/vnd.apple.mpegurl',
-          );
-          request.response.headers.set('Access-Control-Allow-Origin', '*');
-          request.response.write(rewritten);
-          await request.response.close();
-          return;
-        }
-
-        await _writeBinaryResponse(
-          request,
-          statusCode: response.statusCode,
-          bodyBytes: bodyBytes,
-          contentTypeHeader: response.headers['content-type'],
-        );
-        return;
-      }
-
-      await _writeStreamedResponse(
-        request,
-        statusCode: response.statusCode,
-        stream: response.stream,
-        contentTypeHeader: response.headers['content-type'],
-        contentLength: response.contentLength,
-        contentRange: response.headers['content-range'],
-        acceptRanges: response.headers['accept-ranges'],
-      );
-    } catch (e) {
-      debugPrint('[HlsAdFilter] Resource proxy error: $e');
-      request.response.statusCode = 502;
-      request.response.write('Failed to proxy resource');
-      await request.response.close();
-    } finally {
-      client.close();
-    }
-  }
-
-  Map<String, String> _buildForwardHeaders(
-    Uri targetUri,
-    Map<String, String> storedHeaders,
-    HttpHeaders inboundHeaders,
   ) {
-    final headers = <String, String>{...storedHeaders};
-    final origin = '${targetUri.scheme}://${targetUri.authority}';
-    headers['Origin'] = origin;
-    headers['Referer'] = '$origin/';
+    final masterUri = Uri.parse(masterUrl);
+    final baseUrl = _getBaseUrl(masterUri);
 
-    final range = inboundHeaders.value(HttpHeaders.rangeHeader);
-    if (range != null && range.isNotEmpty) {
-      headers[HttpHeaders.rangeHeader] = range;
+    final lines = content.split('\n');
+    final rewritten = <String>[];
+
+    for (var i = 0; i < lines.length; i++) {
+      final trimmed = lines[i].trim();
+
+      if (trimmed.isEmpty || trimmed.startsWith('#')) {
+        rewritten.add(lines[i]);
+        continue;
+      }
+
+      // This is a sub-playlist URL — resolve to absolute.
+      String absoluteUrl;
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        absoluteUrl = trimmed;
+      } else if (trimmed.startsWith('/')) {
+        absoluteUrl =
+            '${masterUri.scheme}://${masterUri.host}$trimmed';
+      } else {
+        absoluteUrl = '$baseUrl/$trimmed';
+      }
+
+      // Register a deferred filter entry for this sub-playlist.
+      final id = '${_nextId++}';
+      _cache[id] = _FilteredManifest(
+        content: '', // Will be fetched on demand.
+        contentType: 'application/vnd.apple.mpegurl',
+        deferredUrl: absoluteUrl,
+        deferredHeaders: headers,
+      );
+
+      rewritten.add('http://127.0.0.1:$_port/m3u8/$id');
     }
 
-    final accept = inboundHeaders.value(HttpHeaders.acceptHeader);
-    if (accept != null && accept.isNotEmpty) {
-      headers[HttpHeaders.acceptHeader] = accept;
-    }
-
-    return headers;
+    return rewritten.join('\n');
   }
 
-  Future<void> _writeStreamedResponse(
-    HttpRequest request, {
-    required int statusCode,
-    required Stream<List<int>> stream,
-    String? contentTypeHeader,
-    int? contentLength,
-    String? contentRange,
-    String? acceptRanges,
-  }) async {
-    request.response.statusCode = statusCode;
-    if (contentTypeHeader != null && contentTypeHeader.isNotEmpty) {
-      try {
-        request.response.headers.contentType = ContentType.parse(
-          contentTypeHeader,
-        );
-      } catch (_) {}
+  static String _getBaseUrl(Uri uri) {
+    final pathSegments = uri.pathSegments;
+    if (pathSegments.isEmpty) {
+      return '${uri.scheme}://${uri.host}';
     }
-    if (contentLength != null && contentLength >= 0) {
-      request.response.contentLength = contentLength;
-    }
-    if (contentRange != null && contentRange.isNotEmpty) {
-      request.response.headers.set(
-        HttpHeaders.contentRangeHeader,
-        contentRange,
-      );
-    }
-    if (acceptRanges != null && acceptRanges.isNotEmpty) {
-      request.response.headers.set(
-        HttpHeaders.acceptRangesHeader,
-        acceptRanges,
-      );
-    }
-    request.response.headers.set('Access-Control-Allow-Origin', '*');
-    await stream.pipe(request.response);
-  }
-
-  Future<void> _writeBinaryResponse(
-    HttpRequest request, {
-    required int statusCode,
-    required Uint8List bodyBytes,
-    String? contentTypeHeader,
-  }) async {
-    await _writeStreamedResponse(
-      request,
-      statusCode: statusCode,
-      stream: Stream<List<int>>.value(bodyBytes),
-      contentTypeHeader: contentTypeHeader,
-      contentLength: bodyBytes.length,
-    );
+    final parentSegments = pathSegments.sublist(0, pathSegments.length - 1);
+    return '${uri.scheme}://${uri.host}/${parentSegments.join('/')}';
   }
 
   // ---------------------------------------------------------------------------
@@ -538,18 +393,57 @@ class HlsAdFilter {
     try {
       final path = request.uri.path;
 
-      if (path.startsWith('/proxy/')) {
-        final id = path.substring(7);
-        final resource = _cache[id];
+      if (path.startsWith('/m3u8/')) {
+        final id = path.substring(6);
+        final manifest = _cache[id];
 
-        if (resource == null) {
+        if (manifest == null) {
           request.response.statusCode = 404;
           request.response.write('Not found');
           await request.response.close();
           return;
         }
 
-        await _proxyRemoteResource(request, resource);
+        // If this is a deferred sub-playlist, fetch, filter, and cache it now.
+        if (manifest.deferredUrl != null && manifest.content.isEmpty) {
+          try {
+            final resp = await http
+                .get(
+                  Uri.parse(manifest.deferredUrl!),
+                  headers: manifest.deferredHeaders,
+                )
+                .timeout(const Duration(seconds: 15));
+
+            if (resp.statusCode == 200) {
+              final filtered = filterAdsFromM3u8(resp.body);
+              final rewritten =
+                  _rewriteSegmentUrls(filtered, manifest.deferredUrl!);
+              _cache[id] = _FilteredManifest(
+                content: rewritten,
+                contentType: manifest.contentType,
+              );
+            } else {
+              request.response.statusCode = resp.statusCode;
+              request.response.write(resp.body);
+              await request.response.close();
+              return;
+            }
+          } catch (e) {
+            debugPrint('[HlsAdFilter] Deferred fetch error: $e');
+            request.response.statusCode = 502;
+            request.response.write('Failed to fetch sub-playlist');
+            await request.response.close();
+            return;
+          }
+        }
+
+        final cached = _cache[id]!;
+        request.response.statusCode = 200;
+        request.response.headers.contentType =
+            ContentType.parse(cached.contentType);
+        request.response.headers.set('Access-Control-Allow-Origin', '*');
+        request.response.write(cached.content);
+        await request.response.close();
         return;
       }
 
@@ -567,16 +461,16 @@ class HlsAdFilter {
   }
 }
 
-class _ProxyResource {
-  const _ProxyResource({
-    required this.sourceUrl,
-    required this.headers,
-    required this.filterEnabled,
-    required this.forceManifest,
+class _FilteredManifest {
+  _FilteredManifest({
+    required this.content,
+    required this.contentType,
+    this.deferredUrl,
+    this.deferredHeaders,
   });
 
-  final String sourceUrl;
-  final Map<String, String> headers;
-  final bool filterEnabled;
-  final bool forceManifest;
+  String content;
+  final String contentType;
+  final String? deferredUrl;
+  final Map<String, String>? deferredHeaders;
 }
