@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/app_theme.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
@@ -415,36 +416,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       },
       child: Scaffold(
+        extendBodyBehindAppBar: true,
         appBar: _isFullScreen
             ? null
             : AppBar(
                 title: Text(widget.item.title),
                 actions: [
-                  // Engine badge
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'BetterPlayer',
-                          style: TextStyle(fontSize: 10, color: Colors.blue),
-                        ),
-                      ),
-                    ),
-                  ),
                   if (app.settings.subtitleEnabled &&
                       app.settings.defaultSubtitleUrl.isNotEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 12),
-                      child: Center(child: Text('字幕已启用')),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            '字幕已启用',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                        ),
+                      ),
                     ),
                   IconButton(
                     onPressed: _toggleFullScreen,
@@ -462,79 +459,188 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ],
               ),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: () {
-                          _retry = 0;
-                          _initialize(widget.item.url);
-                        },
-                        icon: const Icon(Icons.refresh, size: 16),
-                        label: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : Column(
-                children: [
-                  // Player area
-                  Expanded(child: Center(child: _buildPlayer(app))),
-                  // Episode navigation (prev / next)
-                  if (!_isFullScreen &&
-                      widget.currentEpisodeIndex >= 0 &&
-                      widget.episodes.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        children: [
-                          OutlinedButton(
-                            onPressed: widget.currentEpisodeIndex > 0
-                                ? () => _openEpisode(
-                                    widget.currentEpisodeIndex - 1,
-                                  )
-                                : null,
-                            child: const Text('上一集'),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              '第 ${widget.currentEpisodeIndex + 1} / ${widget.episodes.length} 集',
-                              textAlign: TextAlign.center,
+        body: ChiTvBackground(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  size: 44,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  '播放出现问题',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _error!,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  onPressed: () {
+                                    _retry = 0;
+                                    _initialize(widget.item.url);
+                                  },
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('重新加载'),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          FilledButton(
-                            onPressed:
-                                widget.currentEpisodeIndex <
-                                    widget.episodes.length - 1
-                                ? () => _openEpisode(
-                                    widget.currentEpisodeIndex + 1,
-                                  )
-                                : null,
-                            child: const Text('下一集'),
+                        ),
+                      ),
+                    )
+                  : SafeArea(
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                              child: Card(
+                                clipBehavior: Clip.antiAlias,
+                                child: Column(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  widget.seriesTitle ?? widget.item.title,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .titleMedium
+                                                      ?.copyWith(
+                                                        fontWeight: FontWeight.w700,
+                                                      ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Wrap(
+                                                  spacing: 8,
+                                                  runSpacing: 8,
+                                                  children: [
+                                                    _InfoPill(
+                                                      icon: Icons.play_circle_outline,
+                                                      label: 'BetterPlayer',
+                                                    ),
+                                                    _InfoPill(
+                                                      icon: Icons.source_outlined,
+                                                      label: widget.item.sourceId,
+                                                    ),
+                                                    if (widget.currentEpisodeIndex >= 0)
+                                                      _InfoPill(
+                                                        icon: Icons.movie_outlined,
+                                                        label:
+                                                            '第 ${widget.currentEpisodeIndex + 1} 集',
+                                                      ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Expanded(child: Center(child: _buildPlayer(app))),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
+                          if (!_isFullScreen)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                              child: Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              widget.currentEpisodeIndex >= 0 &&
+                                                      widget.episodes.isNotEmpty
+                                                  ? '第 ${widget.currentEpisodeIndex + 1} / ${widget.episodes.length} 集'
+                                                  : '单视频播放',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleSmall
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                          ),
+                                          IconButton.filledTonal(
+                                            onPressed: () =>
+                                                setState(() => _showQos = !_showQos),
+                                            icon: const Icon(Icons.query_stats),
+                                            tooltip: 'QoS',
+                                          ),
+                                        ],
+                                      ),
+                                      if (widget.currentEpisodeIndex >= 0 &&
+                                          widget.episodes.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: OutlinedButton.icon(
+                                                onPressed: widget.currentEpisodeIndex > 0
+                                                    ? () => _openEpisode(
+                                                          widget.currentEpisodeIndex - 1,
+                                                        )
+                                                    : null,
+                                                icon: const Icon(Icons.chevron_left),
+                                                label: const Text('上一集'),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: FilledButton.icon(
+                                                onPressed:
+                                                    widget.currentEpisodeIndex <
+                                                            widget.episodes.length - 1
+                                                        ? () => _openEpisode(
+                                                              widget.currentEpisodeIndex + 1,
+                                                            )
+                                                        : null,
+                                                icon: const Icon(Icons.chevron_right),
+                                                label: const Text('下一集'),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
-                ],
-              ),
+        ),
       ),
     );
   }
@@ -628,10 +734,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       top: 10,
       child: Container(
         width: 260,
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.65),
-          borderRadius: BorderRadius.circular(8),
+          color: context.chitvTheme.overlayPanelHeavy.withValues(alpha: 0.88),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         ),
         child: DefaultTextStyle(
           style: const TextStyle(color: Colors.white, fontSize: 12),
@@ -873,5 +980,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     return url;
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

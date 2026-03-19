@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/app_theme.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
 import '../player/player_screen.dart';
@@ -54,6 +55,7 @@ class _DetailScreenState extends State<DetailScreen> {
     final visibleEpisodes = _visibleEpisodes();
 
     return Scaffold(
+      extendBody: true,
       appBar: AppBar(
         title: Text(detail.title),
         actions: [
@@ -70,91 +72,133 @@ class _DetailScreenState extends State<DetailScreen> {
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: SizedBox(
-                      height: 220,
-                      width: double.infinity,
-                      child: Stack(
-                        fit: StackFit.expand,
+      body: ChiTvBackground(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                    child: Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
                         children: [
-                          detail.poster.isEmpty
-                              ? Container(
-                                  color: Theme.of(context).colorScheme.surfaceContainer,
-                                )
-                              : Image.network(
-                                  detail.poster,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    color: Theme.of(context).colorScheme.surfaceContainer,
+                          SizedBox(
+                            height: 260,
+                            width: double.infinity,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                detail.poster.isEmpty
+                                    ? Container(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .surfaceContainer,
+                                      )
+                                    : Image.network(
+                                        detail.poster,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .surfaceContainer,
+                                        ),
+                                      ),
+                                DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Colors.transparent,
+                                        context.chitvTheme.overlayPanelHeavy,
+                                      ],
+                                    ),
                                   ),
                                 ),
-                          const DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [Colors.transparent, Colors.black87],
-                              ),
+                                Positioned(
+                                  left: 18,
+                                  right: 18,
+                                  bottom: 18,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(alpha: 0.18),
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          _sourceName(app, detail.sourceId),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        detail.title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        detail.description.isEmpty ? '暂无简介' : detail.description,
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Positioned(
-                            left: 14,
-                            right: 14,
-                            bottom: 14,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
                               children: [
-                                Text(
-                                  detail.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: Colors.black,
+                                    ),
+                                    onPressed: () {
+                                      if (_episodes.isEmpty) {
+                                        _openPlayer(context, detail, null, -1);
+                                        return;
+                                      }
+                                      final first = _episodes.first;
+                                      _openPlayer(context, detail, first, 0);
+                                    },
+                                    icon: const Icon(Icons.play_arrow, size: 18),
+                                    label: Text(_episodes.isEmpty ? '立即播放' : '播放第 1 集'),
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '当前源: ${_sourceName(app, detail.sourceId)}',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: (_loading || _switchingSource)
+                                        ? null
+                                        : _showSwitchSourceSheet,
+                                    icon: const Icon(Icons.swap_horiz, size: 18),
+                                    label: const Text('切换片源'),
                                   ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  detail.description.isEmpty ? '暂无简介' : detail.description,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: Colors.black,
-                                  ),
-                                  onPressed: () {
-                                    if (_episodes.isEmpty) {
-                                      _openPlayer(context, detail, null, -1);
-                                      return;
-                                    }
-                                    final first = _episodes.first;
-                                    _openPlayer(context, detail, first, 0);
-                                  },
-                                  icon: const Icon(Icons.play_arrow, size: 18),
-                                  label: const Text('立即播放'),
                                 ),
                               ],
                             ),
@@ -163,103 +207,128 @@ class _DetailScreenState extends State<DetailScreen> {
                       ),
                     ),
                   ),
-                ),
-                const Divider(height: 1),
-                if (_episodes.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _episodeSearchController,
-                            onChanged: (value) => setState(() => _episodeQuery = value.trim()),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              hintText: '搜索剧集 / 输入集数',
-                              prefixIcon: const Icon(Icons.search),
-                              border: const OutlineInputBorder(),
-                              suffixIcon: _episodeQuery.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      icon: const Icon(Icons.clear),
-                                      onPressed: () {
-                                        _episodeSearchController.clear();
-                                        setState(() => _episodeQuery = '');
-                                      },
-                                    ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton.filledTonal(
-                          tooltip: '快速跳转',
-                          onPressed: () => _showEpisodeJumpDialog(detail),
-                          icon: const Icon(Icons.numbers),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton.filledTonal(
-                          tooltip: _episodeAscending ? '倒序' : '正序',
-                          onPressed: () {
-                            setState(() => _episodeAscending = !_episodeAscending);
-                          },
-                          icon: Icon(
-                            _episodeAscending
-                                ? Icons.sort_by_alpha
-                                : Icons.sort_by_alpha_outlined,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                Expanded(
-                  child: _episodes.isEmpty
-                      ? GridView.builder(
+                  if (_episodes.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                      child: Card(
+                        child: Padding(
                           padding: const EdgeInsets.all(12),
-                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 280,
-                            mainAxisExtent: 260,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                          ),
-                          itemCount: 1,
-                          itemBuilder: (context, _) {
-                            return _EpisodeGridCard(
-                              title: '立即播放',
-                              imageUrl: detail.poster,
-                              onPlay: () => _openPlayer(context, detail, null, -1),
-                            );
-                          },
-                        )
-                      : visibleEpisodes.isEmpty
-                          ? const Center(child: Text('没有匹配的剧集'))
-                          : GridView.builder(
-                              padding: const EdgeInsets.all(12),
-                              itemCount: visibleEpisodes.length,
-                              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 280,
-                                mainAxisExtent: 260,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '剧集列表',
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
                               ),
-                              itemBuilder: (context, index) {
-                                final entry = visibleEpisodes[index];
-                                final ep = entry.episode;
-                                return _EpisodeGridCard(
-                                  title: ep.name,
-                                  imageUrl: detail.poster,
-                                  onPlay: () => _openPlayer(
-                                    context,
-                                    detail,
-                                    ep,
-                                    entry.originalIndex,
+                              const SizedBox(height: 4),
+                              Text(
+                                '共 ${_episodes.length} 集，可按名称搜索或按集数快速跳转',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _episodeSearchController,
+                                      onChanged: (value) =>
+                                          setState(() => _episodeQuery = value.trim()),
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        hintText: '搜索剧集 / 输入集数',
+                                        prefixIcon: const Icon(Icons.search),
+                                        suffixIcon: _episodeQuery.isEmpty
+                                            ? null
+                                            : IconButton(
+                                                icon: const Icon(Icons.clear),
+                                                onPressed: () {
+                                                  _episodeSearchController.clear();
+                                                  setState(() => _episodeQuery = '');
+                                                },
+                                              ),
+                                      ),
+                                    ),
                                   ),
-                                );
-                              },
+                                  const SizedBox(width: 8),
+                                  IconButton.filledTonal(
+                                    tooltip: '快速跳转',
+                                    onPressed: () => _showEpisodeJumpDialog(detail),
+                                    icon: const Icon(Icons.numbers),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton.filledTonal(
+                                    tooltip: _episodeAscending ? '倒序' : '正序',
+                                    onPressed: () {
+                                      setState(() => _episodeAscending = !_episodeAscending);
+                                    },
+                                    icon: Icon(
+                                      _episodeAscending
+                                          ? Icons.arrow_downward_rounded
+                                          : Icons.arrow_upward_rounded,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: _episodes.isEmpty
+                        ? GridView.builder(
+                            padding: const EdgeInsets.all(12),
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 280,
+                              mainAxisExtent: 260,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
                             ),
-                ),
-              ],
-            ),
+                            itemCount: 1,
+                            itemBuilder: (context, _) {
+                              return _EpisodeGridCard(
+                                title: '立即播放',
+                                imageUrl: detail.poster,
+                                subtitle: '当前资源暂未提供分集信息',
+                                onPlay: () => _openPlayer(context, detail, null, -1),
+                              );
+                            },
+                          )
+                        : visibleEpisodes.isEmpty
+                            ? const Center(child: Text('没有匹配的剧集'))
+                            : GridView.builder(
+                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                                itemCount: visibleEpisodes.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithMaxCrossAxisExtent(
+                                  maxCrossAxisExtent: 280,
+                                  mainAxisExtent: 260,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final entry = visibleEpisodes[index];
+                                  final ep = entry.episode;
+                                  return _EpisodeGridCard(
+                                    title: ep.name,
+                                    imageUrl: detail.poster,
+                                    subtitle: '第 ${entry.originalIndex + 1} 集',
+                                    onPlay: () => _openPlayer(
+                                      context,
+                                      detail,
+                                      ep,
+                                      entry.originalIndex,
+                                    ),
+                                  );
+                                },
+                              ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -480,16 +549,19 @@ class _EpisodeGridCard extends StatelessWidget {
   const _EpisodeGridCard({
     required this.title,
     required this.imageUrl,
+    required this.subtitle,
     required this.onPlay,
   });
 
   final String title;
   final String imageUrl;
+  final String subtitle;
   final VoidCallback onPlay;
 
   @override
   Widget build(BuildContext context) {
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -518,8 +590,13 @@ class _EpisodeGridCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            Text(
               title,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
             ),

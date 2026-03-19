@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../features/home/home_screen.dart';
 import 'app_controller.dart';
 import 'app_scope.dart';
+import 'app_theme.dart';
 
 class ChiTvApp extends StatelessWidget {
   const ChiTvApp({super.key, required this.controller});
@@ -19,17 +20,8 @@ class ChiTvApp extends StatelessWidget {
           return MaterialApp(
             title: 'ChiTV',
             themeMode: _themeModeFrom(controller.settings.appThemeMode),
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-              useMaterial3: true,
-            ),
-            darkTheme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.blue,
-                brightness: Brightness.dark,
-              ),
-              useMaterial3: true,
-            ),
+            theme: buildChiTvTheme(Brightness.light),
+            darkTheme: buildChiTvTheme(Brightness.dark),
             home: const HomeScreen(),
           );
         },

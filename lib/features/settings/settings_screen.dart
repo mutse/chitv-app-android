@@ -64,8 +64,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '偏好与系统配置',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '统一管理播放器、推荐、代理、数据和片源设置。',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _SettingsStatPill(
+                      icon: Icons.video_settings_outlined,
+                      label: '${app.sources.length} 个视频源',
+                    ),
+                    _SettingsStatPill(
+                      icon: Icons.favorite_outline,
+                      label: '${app.favorites.length} 个收藏',
+                    ),
+                    _SettingsStatPill(
+                      icon: Icons.query_stats_outlined,
+                      label: '${app.qosSessionCount} 次会话',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         const _SectionTitle('播放器'),
         Card(
           child: Column(
@@ -113,7 +154,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 12),
         const _SectionTitle('字幕'),
-        Card(
+        _SettingsPanel(
+          title: '字幕与辅助',
+          subtitle: '管理默认字幕地址和最近使用记录。',
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -165,7 +208,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 12),
         const _SectionTitle('广告过滤'),
-        Card(
+        _SettingsPanel(
+          title: '广告过滤',
+          subtitle: '过滤 HLS 分片和广告相关链接。',
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -239,7 +284,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 12),
         const _SectionTitle('推荐'),
-        Card(
+        _SettingsPanel(
+          title: '推荐配置',
+          subtitle: '控制豆瓣热门入口及接口地址。',
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -276,7 +323,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 12),
         const _SectionTitle('网络代理'),
-        Card(
+        _SettingsPanel(
+          title: '网络与代理',
+          subtitle: '设置通用代理和 HLS 专用代理。',
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
@@ -323,20 +372,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            const Text('配置管理', style: TextStyle(fontWeight: FontWeight.w700)),
-            const Spacer(),
-            FilledButton.tonal(
-              onPressed: () => _showExportDialog(context),
-              child: const Text('导出'),
+        _SettingsPanel(
+          title: '配置管理',
+          subtitle: '导出或导入当前应用配置。',
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showExportDialog(context),
+                    icon: const Icon(Icons.ios_share_outlined),
+                    label: const Text('导出'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _showImportDialog(context),
+                    icon: const Icon(Icons.download_outlined),
+                    label: const Text('导入'),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            FilledButton.tonal(
-              onPressed: () => _showImportDialog(context),
-              child: const Text('导入'),
-            ),
-          ],
+          ),
         ),
         const SizedBox(height: 12),
         const _SectionTitle('数据管理'),
@@ -381,9 +441,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
-        Card(
+        _SettingsPanel(
+          title: 'QoS 诊断汇总',
+          subtitle: '查看启动、缓冲、重试和错误统计。',
           child: ListTile(
-            title: const Text('QoS 诊断汇总'),
+            title: const Text('播放质量监控'),
             subtitle: Text(
               '会话:${app.qosSessionCount}  平均启动:${app.qosAvgStartupMs}ms\n'
               '缓冲:${app.qosBufferEvents}次/${app.qosBufferTotalMs}ms  '
@@ -396,20 +458,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            const Text('视频源管理', style: TextStyle(fontWeight: FontWeight.w700)),
-            const Spacer(),
-            FilledButton.tonal(
-              onPressed: app.probingSources ? null : () => app.refreshSourceSpeeds(),
-              child: Text(app.probingSources ? '测速中' : '测速'),
+        _SettingsPanel(
+          title: '视频源管理',
+          subtitle: '维护聚合搜索与播放所需的数据源。',
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed:
+                        app.probingSources ? null : () => app.refreshSourceSpeeds(),
+                    icon: const Icon(Icons.speed),
+                    label: Text(app.probingSources ? '测速中' : '测速'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _showSourceEditor(context),
+                    icon: const Icon(Icons.add),
+                    label: const Text('添加'),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            FilledButton.tonal(
-              onPressed: () => _showSourceEditor(context),
-              child: const Text('添加'),
-            ),
-          ],
+          ),
         ),
         const SizedBox(height: 8),
         if (app.sources.isEmpty)
@@ -438,7 +512,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         const SizedBox(height: 12),
         const _SectionTitle('关于'),
-        Card(
+        _SettingsPanel(
+          title: '关于 ChiTV',
+          subtitle: '版本、作者与仓库信息。',
           child: Column(
             children: [
               const ListTile(
@@ -762,10 +838,88 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 8, left: 4),
       child: Text(
         text,
-        style: const TextStyle(fontWeight: FontWeight.w700),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+class _SettingsPanel extends StatelessWidget {
+  const _SettingsPanel({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsStatPill extends StatelessWidget {
+  const _SettingsStatPill({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -790,7 +944,7 @@ class _SourceGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -811,15 +965,26 @@ class _SourceGridCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '延迟: $latencyText',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
             Text(
               source.apiUrl,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '延迟: $latencyText',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const Spacer(),
