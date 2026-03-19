@@ -47,6 +47,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _loading = true;
   String? _error;
   bool _endHandled = false;
+  bool _isFullScreen = false;
   int _retry = 0;
   bool _showQos = false;
   int _sessionStartupMs = 0;
@@ -66,6 +67,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _historyTimer?.cancel();
     _persistHistoryPosition();
+    _restoreSystemUi();
     _controller?.dispose();
     super.dispose();
   }
@@ -126,8 +128,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _listenToPlayer();
 
       _sessionStartupMs = DateTime.now().difference(startedAt).inMilliseconds;
-      AppScope.read(context)
-          .recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
+      AppScope.read(
+        context,
+      ).recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
       setState(() => _loading = false);
 
       _startHistoryTracking();
@@ -143,9 +146,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
 
       AppScope.read(context).recordPlaybackError();
-      final msg = e is TimeoutException
-          ? '播放超时，请检查网络或代理配置后重试'
-          : '播放失败: $e';
+      final msg = e is TimeoutException ? '播放超时，请检查网络或代理配置后重试' : '播放失败: $e';
       setState(() {
         _loading = false;
         _error = msg;
@@ -208,15 +209,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.warning_amber_rounded,
-                  color: Colors.orange, size: 48),
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange,
+                size: 48,
+              ),
               const SizedBox(height: 12),
               Text(
                 '视频加载失败',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(color: Colors.white),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(color: Colors.white),
               ),
               const SizedBox(height: 4),
               Text(
@@ -239,14 +242,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // For HLS (.m3u8) we set videoFormat to hls so that ExoPlayer / AVPlayer
     // handles adaptive bitrate switching — same concept as HLS.js in browser.
     final isLocalFile = uri.scheme == 'file';
-    final headers = isLocalFile ? const <String, String>{} : _buildPlaybackHeaders(uri);
+    final headers = isLocalFile
+        ? const <String, String>{}
+        : _buildPlaybackHeaders(uri);
     final dataSource = BetterPlayerDataSource(
       isLocalFile
           ? BetterPlayerDataSourceType.file
           : BetterPlayerDataSourceType.network,
       isLocalFile ? uri.toFilePath() : uri.toString(),
-      videoFormat:
-          isHls ? BetterPlayerVideoFormat.hls : BetterPlayerVideoFormat.other,
+      videoFormat: isHls
+          ? BetterPlayerVideoFormat.hls
+          : BetterPlayerVideoFormat.other,
       headers: headers,
       // Cache configuration — allows buffering ahead.
       cacheConfiguration: const BetterPlayerCacheConfiguration(
@@ -326,6 +332,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
           }
           break;
 
+        case BetterPlayerEventType.openFullscreen:
+          _handleFullScreenChanged(true);
+          break;
+
+        case BetterPlayerEventType.hideFullscreen:
+          _handleFullScreenChanged(false);
+          break;
+
         case BetterPlayerEventType.exception:
           debugPrint('[PlayerScreen] Player error: ${event.parameters}');
           setState(() {});
@@ -356,8 +370,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!app.settings.autoPlayNext) return;
 
     final nextIndex = widget.currentEpisodeIndex + 1;
-    if (widget.currentEpisodeIndex < 0 ||
-        nextIndex >= widget.episodes.length) {
+    if (widget.currentEpisodeIndex < 0 || nextIndex >= widget.episodes.length) {
       return;
     }
 
@@ -397,110 +410,166 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.item.title),
-        actions: [
-          // Engine badge
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'BetterPlayer',
-                  style: TextStyle(fontSize: 10, color: Colors.blue),
-                ),
-              ),
-            ),
-          ),
-          if (app.settings.subtitleEnabled &&
-              app.settings.defaultSubtitleUrl.isNotEmpty)
-            const Padding(
-              padding: EdgeInsets.only(right: 12),
-              child: Center(child: Text('字幕已启用')),
-            ),
-          IconButton(
-            onPressed: () => setState(() => _showQos = !_showQos),
-            icon: const Icon(Icons.query_stats),
-            tooltip: 'QoS',
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: () {
-                            _retry = 0;
-                            _initialize(widget.item.url);
-                          },
-                          icon: const Icon(Icons.refresh, size: 16),
-                          label: const Text('重试'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Column(
-                  children: [
-                    // Player area
-                    Expanded(
-                      child: Center(child: _buildPlayer(app)),
-                    ),
-                    // Episode navigation (prev / next)
-                    if (widget.currentEpisodeIndex >= 0 &&
-                        widget.episodes.isNotEmpty)
-                      Padding(
+    return PopScope<void>(
+      canPop: !_isFullScreen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _isFullScreen) {
+          _controller?.exitFullScreen();
+        }
+      },
+      child: Scaffold(
+        appBar: _isFullScreen
+            ? null
+            : AppBar(
+                title: Text(widget.item.title),
+                actions: [
+                  // Engine badge
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Center(
+                      child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        child: Row(
-                          children: [
-                            OutlinedButton(
-                              onPressed: widget.currentEpisodeIndex > 0
-                                  ? () => _openEpisode(
-                                      widget.currentEpisodeIndex - 1)
-                                  : null,
-                              child: const Text('上一集'),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                '第 ${widget.currentEpisodeIndex + 1} / ${widget.episodes.length} 集',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            FilledButton(
-                              onPressed: widget.currentEpisodeIndex <
-                                      widget.episodes.length - 1
-                                  ? () => _openEpisode(
-                                      widget.currentEpisodeIndex + 1)
-                                  : null,
-                              child: const Text('下一集'),
-                            ),
-                          ],
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'BetterPlayer',
+                          style: TextStyle(fontSize: 10, color: Colors.blue),
                         ),
                       ),
-                  ],
+                    ),
+                  ),
+                  if (app.settings.subtitleEnabled &&
+                      app.settings.defaultSubtitleUrl.isNotEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 12),
+                      child: Center(child: Text('字幕已启用')),
+                    ),
+                  IconButton(
+                    onPressed: _toggleFullScreen,
+                    icon: Icon(
+                      _isFullScreen
+                          ? Icons.fullscreen_exit_outlined
+                          : Icons.fullscreen_outlined,
+                    ),
+                    tooltip: _isFullScreen ? '退出全屏' : '全屏播放',
+                  ),
+                  IconButton(
+                    onPressed: () => setState(() => _showQos = !_showQos),
+                    icon: const Icon(Icons.query_stats),
+                    tooltip: 'QoS',
+                  ),
+                ],
+              ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () {
+                          _retry = 0;
+                          _initialize(widget.item.url);
+                        },
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('重试'),
+                      ),
+                    ],
+                  ),
                 ),
+              )
+            : Column(
+                children: [
+                  // Player area
+                  Expanded(child: Center(child: _buildPlayer(app))),
+                  // Episode navigation (prev / next)
+                  if (!_isFullScreen &&
+                      widget.currentEpisodeIndex >= 0 &&
+                      widget.episodes.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        children: [
+                          OutlinedButton(
+                            onPressed: widget.currentEpisodeIndex > 0
+                                ? () => _openEpisode(
+                                    widget.currentEpisodeIndex - 1,
+                                  )
+                                : null,
+                            child: const Text('上一集'),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              '第 ${widget.currentEpisodeIndex + 1} / ${widget.episodes.length} 集',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          FilledButton(
+                            onPressed:
+                                widget.currentEpisodeIndex <
+                                    widget.episodes.length - 1
+                                ? () => _openEpisode(
+                                    widget.currentEpisodeIndex + 1,
+                                  )
+                                : null,
+                            child: const Text('下一集'),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Future<void> _toggleFullScreen() async {
+    final controller = _controller;
+    if (controller == null) return;
+
+    if (controller.isFullScreen || _isFullScreen) {
+      controller.exitFullScreen();
+    } else {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      controller.enterFullScreen();
+    }
+  }
+
+  void _handleFullScreenChanged(bool isFullScreen) {
+    if (!mounted || _isFullScreen == isFullScreen) return;
+
+    if (!isFullScreen) {
+      _restoreSystemUi();
+    }
+
+    setState(() {
+      _isFullScreen = isFullScreen;
+    });
+  }
+
+  void _restoreSystemUi() {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+      overlays: SystemUiOverlay.values,
     );
   }
 
@@ -572,8 +641,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('QoS Monitor',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'QoS Monitor',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const Text('引擎: BetterPlayer (video_player + ExoPlayer)'),
               Text('本次启动: ${_sessionStartupMs}ms'),
               Text('累计会话: ${app.qosSessionCount}'),
@@ -637,7 +708,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   ///
   /// This mirrors LibreTV's ApiService.fetchM3u8 which routes m3u8 through
   /// the server proxy at `/hls/proxy?url=...` for ad-segment filtering.
-  Future<String> _resolvePlaybackUrl(String rawUrl, AppSettings settings) async {
+  Future<String> _resolvePlaybackUrl(
+    String rawUrl,
+    AppSettings settings,
+  ) async {
     final normalized = rawUrl.trim();
     if (normalized.isEmpty) return normalized;
 
@@ -701,21 +775,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       final response = await http
-          .get(
-            sourceUri,
-            headers: _buildPlaybackHeaders(sourceUri),
-          )
+          .get(sourceUri, headers: _buildPlaybackHeaders(sourceUri))
           .timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) return sourceUrl;
 
       final body = response.body;
       if (!body.trimLeft().startsWith('#EXTM3U')) return sourceUrl;
 
-      final filtered = _filterAdsFromM3u8(
-        body,
-        sourceUri,
-        settings: settings,
-      );
+      final filtered = _filterAdsFromM3u8(body, sourceUri, settings: settings);
       if (filtered.trim().isEmpty) return sourceUrl;
 
       final file = File(
@@ -843,8 +910,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final raw = widget.item.vodPlayUrl?.trim() ?? '';
     if (raw.isEmpty) return const [];
 
-    final targetIndex =
-        widget.currentEpisodeIndex >= 0 ? widget.currentEpisodeIndex : 0;
+    final targetIndex = widget.currentEpisodeIndex >= 0
+        ? widget.currentEpisodeIndex
+        : 0;
     final output = <String>[];
 
     final sources = raw.split(r'$$$');
@@ -859,8 +927,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           .toList();
       if (entries.isEmpty) continue;
 
-      final episodeEntry =
-          targetIndex < entries.length ? entries[targetIndex] : entries.first;
+      final episodeEntry = targetIndex < entries.length
+          ? entries[targetIndex]
+          : entries.first;
       final parsed = _extractPlayableFromEpisodeEntry(episodeEntry);
       if (parsed.isNotEmpty) {
         output.add(parsed);
@@ -876,8 +945,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (normalized.isEmpty) return '';
 
     final splitAt = normalized.indexOf(r'$');
-    var url =
-        splitAt == -1 ? normalized : normalized.substring(splitAt + 1).trim();
+    var url = splitAt == -1
+        ? normalized
+        : normalized.substring(splitAt + 1).trim();
 
     url = url.replaceAll(r'\/', '/');
     if (url.startsWith('//')) {

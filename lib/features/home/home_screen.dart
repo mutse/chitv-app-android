@@ -44,7 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            Image.asset('assets/logo.png', width: 24, height: 24),
+            Image.asset('assets/icon.png', width: 24, height: 24),
             const SizedBox(width: 8),
             const Text('ChiTV Android'),
           ],

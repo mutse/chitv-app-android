@@ -381,41 +381,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        const _SectionTitle('关于'),
-        Card(
-          child: Column(
-            children: [
-              const ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('App 描述'),
-                subtitle: Text(_appDescription),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.new_releases_outlined),
-                title: const Text('版本号'),
-                subtitle: Text(_appVersion),
-              ),
-              const Divider(height: 1),
-              const ListTile(
-                leading: Icon(Icons.person_outline),
-                title: Text('作者'),
-                subtitle: Text(_author),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.code_outlined),
-                title: const Text('GitHub 仓库'),
-                subtitle: const Text(_githubUrl),
-                trailing: const Icon(Icons.open_in_new),
-                onTap: _openGithubRepo,
-                onLongPress: () => _copyToClipboard(_githubUrl, '仓库链接已复制'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
         Card(
           child: ListTile(
             title: const Text('QoS 诊断汇总'),
@@ -471,6 +436,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
+        const SizedBox(height: 12),
+        const _SectionTitle('关于'),
+        Card(
+          child: Column(
+            children: [
+              const ListTile(
+                leading: Icon(Icons.info_outline),
+                title: Text('App 描述'),
+                subtitle: Text(_appDescription),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.new_releases_outlined),
+                title: const Text('版本号'),
+                subtitle: Text(_appVersion),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.person_outline),
+                title: Text('作者'),
+                subtitle: Text(_author),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.code_outlined),
+                title: const Text('GitHub 仓库'),
+                subtitle: const Text(_githubUrl),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: _openGithubRepo,
+                onLongPress: () => _copyToClipboard(_githubUrl, '仓库链接已复制'),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
