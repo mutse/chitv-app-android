@@ -6,7 +6,6 @@ import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../app/app_theme.dart';
 import '../../core/models/douban_item.dart';
-import '../../core/models/playback_history_item.dart';
 import '../../core/models/video_item.dart';
 import '../detail/detail_screen.dart';
 import '../settings/settings_screen.dart';
@@ -85,8 +84,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: ChiTvBackground(
         child: switch (_tab) {
-          0 => _buildSearchTab(context),
-          1 => _buildHistoryTab(context),
+          0 => _buildHomeTab(context),
+          1 => _buildSearchTab(context),
           2 => _buildFavoritesTab(context),
           _ => const SettingsScreen(),
         },
@@ -99,14 +98,28 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedIndex: _tab,
             onDestinationSelected: (v) => setState(() => _tab = v),
             destinations: const [
-              NavigationDestination(icon: Icon(Icons.search), label: '首页/搜索'),
-              NavigationDestination(icon: Icon(Icons.history), label: '历史'),
+              NavigationDestination(icon: Icon(Icons.home_rounded), label: '首页'),
+              NavigationDestination(icon: Icon(Icons.search), label: '搜索'),
               NavigationDestination(icon: Icon(Icons.favorite), label: '收藏'),
               NavigationDestination(icon: Icon(Icons.settings), label: '设置'),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildHomeTab(BuildContext context) {
+    final app = AppScope.of(context);
+    return Column(
+      children: [
+        if (app.error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Text(app.error!, style: const TextStyle(color: Colors.red)),
+          ),
+        Expanded(child: _buildHomeFeed(context, app)),
+      ],
     );
   }
 
@@ -127,14 +140,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '发现你想看的内容',
+                    '搜索你想看的内容',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '聚合搜索、热门推荐和继续观看都集中在这里。',
+                    '参考 iOS 版独立搜索页，聚合搜索和最近搜索都单独展示。',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 12),
@@ -153,7 +166,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                     onPressed: () {
                                       _controller.clear();
                                       setState(() {});
-                                      app.loadHomeVideos(sourceIds: _selectedSourceIds);
                                     },
                                   ),
                           ),
@@ -234,11 +246,26 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Text(app.error!, style: const TextStyle(color: Colors.red)),
           ),
         Expanded(
-          child: showSearchResults
+          child: query.isNotEmpty
               ? _buildSearchResultList(app)
-              : _buildHomeFeed(context, app),
+              : _buildSearchIdleState(context, app),
         ),
       ],
+    );
+  }
+
+  Widget _buildSearchIdleState(BuildContext context, AppController app) {
+    if (app.searching) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return _buildLibraryEmptyState(
+      context,
+      icon: Icons.manage_search_rounded,
+      title: '开始搜索影片',
+      subtitle: app.recentSearches.isNotEmpty
+          ? '输入关键词，或者直接点上方最近搜索快速继续查找。'
+          : '输入片名、演员或关键词后，我们会从当前片源里聚合搜索结果。',
     );
   }
 
@@ -798,95 +825,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildHistoryTab(BuildContext context) {
-    final app = AppScope.of(context);
-    if (app.history.isEmpty) {
-      return _buildLibraryEmptyState(
-        context,
-        icon: Icons.history_rounded,
-        title: '还没有观看记录',
-        subtitle: '开始播放任意内容后，这里会显示最近观看进度和回看入口。',
-      );
-    }
-
-    final latest = app.history.first;
-    final sources = app.history.map((entry) => entry.video.sourceId).toSet().length;
-    final totalProgressSeconds = app.history.fold<int>(
-      0,
-      (sum, entry) => sum + entry.lastPositionSeconds,
-    );
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-      children: [
-        _LibraryHeroCard(
-          title: '观看历史',
-          subtitle: '像 iOS 媒体资料库一样快速回到最近看过的内容。',
-          leadingIcon: Icons.history_rounded,
-          stats: [
-            _LibraryStat(label: '记录', value: '${app.history.length}'),
-            _LibraryStat(label: '来源', value: '$sources'),
-            _LibraryStat(label: '累计进度', value: '${totalProgressSeconds ~/ 60} 分钟'),
-          ],
-        ),
-        const _SectionHeader(title: '最近观看', subtitle: '保留最近播放时间和进度信息'),
-        SizedBox(
-          height: 176,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: app.history.take(8).length,
-            itemBuilder: (context, index) {
-              final entry = app.history[index];
-              return Padding(
-                padding: EdgeInsets.only(right: index == 7 ? 0 : 12),
-                child: SizedBox(
-                  width: 280,
-                  child: _HistorySpotlightCard(
-                    entry: entry,
-                    isFavorite: app.isFavorite(entry.video.id),
-                    onFavoriteToggle: () => app.toggleFavorite(entry.video),
-                    onTap: () => _openDetail(context, entry.video),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        const _SectionHeader(title: '全部记录', subtitle: '按时间倒序展示你的观看历史'),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          itemCount: app.history.length,
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 240,
-            mainAxisExtent: 320,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
-          itemBuilder: (context, index) {
-            final entry = app.history[index];
-            final item = entry.video;
-            return _VideoGridCard(
-              item: item,
-              badgeText: _formatDateTime(entry.watchedAt),
-              meta:
-                  '已观看 ${entry.lastPositionSeconds ~/ 60 > 0 ? '${entry.lastPositionSeconds ~/ 60} 分钟' : '${entry.lastPositionSeconds}s'}',
-              isFavorite: app.isFavorite(item.id),
-              onFavoriteToggle: () => app.toggleFavorite(item),
-              onPlay: () => _openDetail(context, item),
-              onDetail: () => _openDetail(context, item),
-            );
-          },
-        ),
-        const SizedBox(height: 4),
-        _LibraryFooterNote(
-          text: '最近一次观看: ${latest.video.title} · ${_formatDateTime(latest.watchedAt)}',
-        ),
-      ],
-    );
-  }
-
   Widget _buildFavoritesTab(BuildContext context) {
     final app = AppScope.of(context);
     if (app.favorites.isEmpty) {
@@ -1025,7 +963,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _doSearch(AppController app) {
     final query = _controller.text.trim();
     if (query.isEmpty) {
-      app.loadHomeVideos(sourceIds: _selectedSourceIds);
       return;
     }
     app.search(query, sourceIds: _selectedSourceIds);
@@ -1196,116 +1133,6 @@ class _LibraryStatChip extends StatelessWidget {
   }
 }
 
-class _HistorySpotlightCard extends StatelessWidget {
-  const _HistorySpotlightCard({
-    required this.entry,
-    required this.isFavorite,
-    required this.onFavoriteToggle,
-    required this.onTap,
-  });
-
-  final PlaybackHistoryItem entry;
-  final bool isFavorite;
-  final VoidCallback onFavoriteToggle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final item = entry.video;
-    final progress = entry.lastPositionSeconds;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            item.poster.isEmpty
-                ? Container(color: Theme.of(context).colorScheme.surfaceContainer)
-                : Image.network(
-                    item.poster,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: Theme.of(context).colorScheme.surfaceContainer,
-                    ),
-                  ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    context.chitvTheme.overlayPanelHeavy,
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              right: 10,
-              top: 10,
-              child: IconButton.filledTonal(
-                onPressed: onFavoriteToggle,
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.black45,
-                  foregroundColor: Colors.white,
-                ),
-                icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
-              ),
-            ),
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: 14,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      progress > 0 ? '已看到 ${progress ~/ 60 > 0 ? '${progress ~/ 60} 分钟' : '${progress}s'}' : '刚开始观看',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.description.isEmpty ? '继续播放或查看详情' : item.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _LibraryFooterNote extends StatelessWidget {
   const _LibraryFooterNote({
     required this.text,
@@ -1332,7 +1159,6 @@ class _VideoGridCard extends StatelessWidget {
     required this.onFavoriteToggle,
     required this.onPlay,
     required this.onDetail,
-    this.meta,
     this.badgeText,
   });
 
@@ -1341,7 +1167,6 @@ class _VideoGridCard extends StatelessWidget {
   final VoidCallback onFavoriteToggle;
   final VoidCallback onPlay;
   final VoidCallback onDetail;
-  final String? meta;
   final String? badgeText;
 
   @override
@@ -1411,7 +1236,7 @@ class _VideoGridCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              meta ?? (item.description.isEmpty ? '暂无简介' : item.description),
+              item.description.isEmpty ? '暂无简介' : item.description,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
