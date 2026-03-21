@@ -51,6 +51,7 @@ class AppController extends ChangeNotifier {
   int qosBufferTotalMs = 0;
   int qosRetryCount = 0;
   int qosStartupTotalMs = 0;
+  int _searchRequestSerial = 0;
 
   Future<void> init() async {
     initializing = true;
@@ -94,12 +95,13 @@ class AppController extends ChangeNotifier {
 
   Future<void> search(String query, {Set<String>? sourceIds}) async {
     if (query.trim().isEmpty) return;
+    final requestSerial = ++_searchRequestSerial;
     searching = true;
     error = null;
     notifyListeners();
 
     try {
-      searchResults = await _repository.searchAcrossSources(
+      final results = await _repository.searchAcrossSources(
         sources: sources,
         query: query.trim(),
         adultFilterEnabled: settings.adultFilterEnabled,
@@ -108,12 +110,24 @@ class AppController extends ChangeNotifier {
         proxyBaseUrl: settings.proxyBaseUrl,
         sourceIds: sourceIds,
       );
+      if (requestSerial != _searchRequestSerial) return;
+      searchResults = results;
       await _saveSearchHistory(query.trim());
     } catch (e) {
+      if (requestSerial != _searchRequestSerial) return;
       error = '$e';
     }
 
+    if (requestSerial != _searchRequestSerial) return;
     searching = false;
+    notifyListeners();
+  }
+
+  void clearSearchState() {
+    _searchRequestSerial += 1;
+    searching = false;
+    error = null;
+    searchResults = const [];
     notifyListeners();
   }
 
@@ -221,6 +235,25 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  PlaybackHistoryItem? findHistoryForVideo(VideoItem item) {
+    PlaybackHistoryItem? fallback;
+    for (final entry in history) {
+      final sameSource = entry.video.sourceId == item.sourceId;
+      if (!sameSource) continue;
+
+      if (item.url.isNotEmpty && entry.video.url == item.url) {
+        return entry;
+      }
+      if (fallback == null && entry.video.id == item.id) {
+        fallback = entry;
+      }
+    }
+    if (fallback != null) {
+      return fallback;
+    }
+    return null;
+  }
+
   Future<void> setAdultFilter(bool enabled) async {
     settings = settings.copyWith(adultFilterEnabled: enabled);
     await _localStore.saveSettings(settings);
@@ -247,10 +280,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> setDefaultSubtitleUrl(String url) async {
     final trimmed = url.trim();
-    final merged = [
-      if (trimmed.isNotEmpty) trimmed,
-      ...settings.recentSubtitleUrls.where((u) => u != trimmed),
-    ].take(10).toList();
+    final merged = _mergeSubtitleUrls(trimmed);
 
     settings = settings.copyWith(
       defaultSubtitleUrl: trimmed,
@@ -258,6 +288,25 @@ class AppController extends ChangeNotifier {
     );
     await _localStore.saveSettings(settings);
     notifyListeners();
+  }
+
+  Future<void> rememberSubtitleUrl(String url, {bool makeDefault = false}) async {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return;
+
+    settings = settings.copyWith(
+      defaultSubtitleUrl: makeDefault ? trimmed : settings.defaultSubtitleUrl,
+      recentSubtitleUrls: _mergeSubtitleUrls(trimmed),
+    );
+    await _localStore.saveSettings(settings);
+    notifyListeners();
+  }
+
+  List<String> _mergeSubtitleUrls(String trimmed) {
+    return [
+      if (trimmed.isNotEmpty) trimmed,
+      ...settings.recentSubtitleUrls.where((u) => u != trimmed),
+    ].take(10).toList();
   }
 
   Future<void> setHlsProxyBaseUrl(String value) async {

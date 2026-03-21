@@ -121,15 +121,34 @@ ThemeData buildChiTvTheme(Brightness brightness) {
     canvasColor: Colors.transparent,
     extensions: [extra],
     appBarTheme: AppBarTheme(
-      backgroundColor: Colors.transparent,
+      backgroundColor: extra.surfaceColor.withValues(alpha: 0.72),
+      surfaceTintColor: Colors.transparent,
       foregroundColor: scheme.onSurface,
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
+      toolbarHeight: 62,
+      titleSpacing: 20,
+      shape: Border(
+        bottom: BorderSide(
+          color: extra.strokeColor.withValues(alpha: 0.4),
+        ),
+      ),
       titleTextStyle: TextStyle(
         color: scheme.onSurface,
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: FontWeight.w700,
+        letterSpacing: -0.2,
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        backgroundColor: extra.surfaceColor.withValues(alpha: 0.9),
+        foregroundColor: scheme.onSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: extra.strokeColor.withValues(alpha: 0.75)),
+        ),
       ),
     ),
     cardTheme: CardThemeData(
@@ -244,6 +263,107 @@ class ChiTvBackground extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(gradient: extra.backgroundGradient),
       child: child,
+    );
+  }
+}
+
+class ChiTvNavTitle extends StatelessWidget {
+  const ChiTvNavTitle({
+    super.key,
+    required this.eyebrow,
+    required this.title,
+  });
+
+  final String eyebrow;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          eyebrow,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class ChiTvLargeNavHeader extends StatelessWidget {
+  const ChiTvLargeNavHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.progress = 1,
+  });
+
+  final String title;
+  final String? subtitle;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final clamped = progress.clamp(0.0, 1.0);
+    final titleScale = 0.92 + (0.08 * clamped);
+    final translateY = 16 * (1 - clamped);
+    return Transform.translate(
+      offset: Offset(0, translateY),
+      child: Opacity(
+        opacity: clamped,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (subtitle != null && subtitle!.isNotEmpty) ...[
+                Text(
+                  subtitle!,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                      ),
+                ),
+                const SizedBox(height: 4),
+              ],
+              Transform.scale(
+                alignment: Alignment.centerLeft,
+                scale: titleScale,
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.5,
+                        color: scheme.onSurface,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

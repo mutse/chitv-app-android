@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/app_theme.dart';
 import '../../core/models/ad_filter.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/models/vod_source.dart';
@@ -48,7 +50,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final themeMode = _normalizeThemeMode(app.settings.appThemeMode);
 
     if (_subtitleController.text != app.settings.defaultSubtitleUrl) {
       _subtitleController.text = app.settings.defaultSubtitleUrl;
@@ -67,11 +68,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       children: [
         Card(
+          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.42),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.76),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'Settings Overview',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Text(
                   '偏好与系统配置',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -107,368 +123,520 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        const _SectionTitle('播放器'),
-        Card(
-          child: Column(
-            children: [
-              SwitchListTile(
-                value: app.settings.autoPlayNext,
-                onChanged: app.setAutoPlayNext,
-                title: const Text('自动播放下一集'),
-              ),
-              const Divider(height: 1),
-              SwitchListTile(
-                value: app.settings.loopPlayback,
-                onChanged: app.setLoopPlayback,
-                title: const Text('单集循环播放'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _SectionTitle('外观'),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('主题模式'),
-                const SizedBox(height: 8),
-                SegmentedButton<String>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: 'system', label: Text('跟随系统')),
-                    ButtonSegment(value: 'light', label: Text('浅色')),
-                    ButtonSegment(value: 'dark', label: Text('深色')),
-                  ],
-                  selected: {themeMode},
-                  onSelectionChanged: (next) {
-                    if (next.isEmpty) return;
-                    app.setAppThemeMode(next.first);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _SectionTitle('字幕'),
-        _SettingsPanel(
-          title: '字幕与辅助',
-          subtitle: '管理默认字幕地址和最近使用记录。',
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  value: app.settings.subtitleEnabled,
-                  onChanged: app.setSubtitleEnabled,
-                  title: const Text('启用字幕（URL）'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _subtitleController,
-                        decoration: const InputDecoration(
-                          labelText: '默认字幕 URL (.vtt/.srt)',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: () => app.setDefaultSubtitleUrl(_subtitleController.text),
-                      child: const Text('保存'),
-                    ),
-                  ],
-                ),
-                if (app.settings.recentSubtitleUrls.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: app.settings.recentSubtitleUrls.map((url) {
-                      return ActionChip(
-                        label: SizedBox(
-                          width: 220,
-                          child: Text(url, overflow: TextOverflow.ellipsis),
-                        ),
-                        onPressed: () => app.setDefaultSubtitleUrl(url),
-                      );
-                    }).toList(),
-                  ),
+        const _SectionTitle('常用'),
+        _SettingsGroupCard(
+          children: [
+            _SettingsEntryCard(
+              icon: Icons.play_circle_outline_rounded,
+              title: '播放与外观',
+              subtitle: '播放器偏好、主题模式、字幕 URL 与最近字幕记录',
+              stat: _playerAppearanceSummary(app),
+              onTap: () => _openSectionPage(
+                context,
+                title: '播放与外观',
+                subtitle: '统一管理播放行为、界面主题和字幕设置。',
+                children: [
+                  _buildPlayerSection(context, app),
+                  const SizedBox(height: 12),
+                  _buildAppearanceSection(context, app),
+                  const SizedBox(height: 12),
+                  _buildSubtitleSection(context, app),
                 ],
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _SectionTitle('广告过滤'),
-        _SettingsPanel(
-          title: '广告过滤',
-          subtitle: '过滤 HLS 分片和广告相关链接。',
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  value: app.settings.hlsAdFilterEnabled,
-                  onChanged: app.setHlsAdFilterEnabled,
-                  title: const Text('启用广告过滤'),
-                  subtitle: const Text('会同时过滤 HLS 分片、搜索结果、剧集列表中的广告链接'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      '自定义规则 ${app.settings.adFilters.length} 条',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const Spacer(),
-                    FilledButton.tonalIcon(
-                      onPressed: () => _showAddFilterDialog(context),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('添加规则'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (app.settings.adFilters.isEmpty)
-                  const ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('暂无自定义规则'),
-                  )
-                else
-                  ...app.settings.adFilters.map((filter) {
-                    return Column(
-                      children: [
-                        SwitchListTile(
-                          value: filter.enabled,
-                          onChanged: (value) => app.toggleAdFilter(filter.id, value),
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            filter.pattern,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(filter.type.label),
-                          secondary: IconButton(
-                            onPressed: () => app.removeAdFilter(filter.id),
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: '删除规则',
-                          ),
-                        ),
-                        if (filter.id != app.settings.adFilters.last.id)
-                          const Divider(height: 1),
-                      ],
-                    );
-                  }),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _SectionTitle('内容过滤'),
-        Card(
-          child: SwitchListTile(
-            value: app.settings.adultFilterEnabled,
-            onChanged: app.setAdultFilter,
-            title: const Text('成人内容过滤'),
-            subtitle: const Text('在首页、搜索结果中过滤敏感关键词内容'),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _SectionTitle('推荐'),
-        _SettingsPanel(
-          title: '推荐配置',
-          subtitle: '控制豆瓣热门入口及接口地址。',
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  value: app.settings.doubanHotEnabled,
-                  onChanged: app.setDoubanHotEnabled,
-                  title: const Text('启用豆瓣热门推荐'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _doubanEndpointController,
-                        decoration: const InputDecoration(
-                          labelText: '豆瓣接口地址',
-                          hintText: AppSettings.defaultDoubanHotEndpoint,
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: () => app.setDoubanHotEndpoint(_doubanEndpointController.text),
-                      child: const Text('保存'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _SectionTitle('网络代理'),
-        _SettingsPanel(
-          title: '网络与代理',
-          subtitle: '设置通用代理和 HLS 专用代理。',
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _proxyController,
-                        decoration: const InputDecoration(
-                          labelText: '通用代理地址 (用于 /proxy)',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: () => app.setProxyBaseUrl(_proxyController.text),
-                      child: const Text('保存'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _hlsProxyController,
-                        decoration: const InputDecoration(
-                          labelText: 'HLS 代理地址 (为空时复用通用代理)',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: () => app.setHlsProxyBaseUrl(_hlsProxyController.text),
-                      child: const Text('保存'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _SettingsPanel(
-          title: '配置管理',
-          subtitle: '导出或导入当前应用配置。',
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showExportDialog(context),
-                    icon: const Icon(Icons.ios_share_outlined),
-                    label: const Text('导出'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: () => _showImportDialog(context),
-                    icon: const Icon(Icons.download_outlined),
-                    label: const Text('导入'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const _SectionTitle('数据管理'),
-        Card(
-          child: Column(
-            children: [
-              ListTile(
-                title: const Text('清空观看历史'),
-                subtitle: Text('${app.history.length} 条记录'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _confirmAndRun(
-                  context,
-                  title: '清空观看历史',
-                  message: '此操作不可恢复，是否继续？',
-                  onConfirm: app.clearWatchHistory,
-                ),
               ),
-              const Divider(height: 1),
-              ListTile(
-                title: const Text('清空搜索历史'),
-                subtitle: Text('${app.recentSearches.length} 条记录'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _confirmAndRun(
-                  context,
-                  title: '清空搜索历史',
-                  message: '此操作不可恢复，是否继续？',
-                  onConfirm: app.clearSearchHistory,
-                ),
+            ),
+            _SettingsEntryCard(
+              icon: Icons.filter_alt_outlined,
+              title: '推荐与过滤',
+              subtitle: '推荐源、广告过滤、成人内容过滤与豆瓣热门入口',
+              stat: _recommendFilterSummary(app),
+              onTap: () => _openSectionPage(
+                context,
+                title: '推荐与过滤',
+                subtitle: '把内容推荐和过滤规则收在同一层，减少主页长度。',
+                children: [
+                  _buildAdFilterSection(context, app),
+                  const SizedBox(height: 12),
+                  _buildAdultFilterSection(context, app),
+                  const SizedBox(height: 12),
+                  _buildRecommendSection(context, app),
+                ],
               ),
-              const Divider(height: 1),
-              ListTile(
-                title: const Text('清空收藏'),
-                subtitle: Text('${app.favorites.length} 条记录'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _confirmAndRun(
-                  context,
-                  title: '清空收藏',
-                  message: '此操作不可恢复，是否继续？',
-                  onConfirm: app.clearFavorites,
-                ),
+            ),
+            _SettingsEntryCard(
+              icon: Icons.dns_outlined,
+              title: '视频源管理',
+              subtitle: '管理聚合搜索与播放所使用的视频源、测速与编辑',
+              stat: '${app.sources.where((source) => source.enabled).length}/${app.sources.length} 已启用',
+              onTap: () => _openSectionPage(
+                context,
+                title: '视频源管理',
+                subtitle: '维护聚合搜索与播放所需的数据源。',
+                children: [
+                  _buildSourceSection(context, app),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const _SectionTitle('系统与维护'),
+        _SettingsGroupCard(
+          children: [
+            _SettingsEntryCard(
+              icon: Icons.language_rounded,
+              title: '网络与代理',
+              subtitle: '管理通用代理、HLS 代理与相关网络转发地址',
+              stat: _networkSummary(app),
+              onTap: () => _openSectionPage(
+                context,
+                title: '网络与代理',
+                subtitle: '用于处理代理转发和 HLS 专用代理配置。',
+                children: [
+                  _buildNetworkSection(context, app),
+                ],
+              ),
+            ),
+            _SettingsEntryCard(
+              icon: Icons.storage_rounded,
+              title: '数据与配置',
+              subtitle: '导入导出配置、清理历史数据以及查看 QoS 诊断',
+              stat: _dataSummary(app),
+              onTap: () => _openSectionPage(
+                context,
+                title: '数据与配置',
+                subtitle: '这里放置高频维护项和数据管理操作。',
+                children: [
+                  _buildConfigSection(context, app),
+                  const SizedBox(height: 12),
+                  _buildDataSection(context, app),
+                  const SizedBox(height: 12),
+                  _buildQosSection(context, app),
+                ],
+              ),
+            ),
+            _SettingsEntryCard(
+              icon: Icons.info_outline_rounded,
+              title: '关于应用',
+              subtitle: '查看版本、作者、仓库链接和当前应用信息',
+              stat: _appVersion,
+              onTap: () => _openSectionPage(
+                context,
+                title: '关于 ChiTV',
+                subtitle: '版本、作者与仓库信息。',
+                children: [
+                  _buildAboutSection(context),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _openSectionPage(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required List<Widget> children,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _SettingsSectionPage(
+          title: title,
+          subtitle: subtitle,
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  String _playerAppearanceSummary(AppController app) {
+    final items = <String>[
+      app.settings.autoPlayNext ? '连播开' : '连播关',
+      app.settings.subtitleEnabled ? '字幕开' : '字幕关',
+      _themeModeShortLabel(app.settings.appThemeMode),
+    ];
+    return items.join(' · ');
+  }
+
+  String _recommendFilterSummary(AppController app) {
+    return '规则 ${app.settings.adFilters.length} · 豆瓣${app.settings.doubanHotEnabled ? '开' : '关'}';
+  }
+
+  String _networkSummary(AppController app) {
+    final proxy = app.settings.proxyBaseUrl.trim().isEmpty ? '通用未配' : '通用已配';
+    final hls = app.settings.hlsProxyBaseUrl.trim().isEmpty ? 'HLS 复用' : 'HLS 已配';
+    return '$proxy · $hls';
+  }
+
+  String _dataSummary(AppController app) {
+    return '历史 ${app.history.length} · 搜索 ${app.recentSearches.length} · 收藏 ${app.favorites.length}';
+  }
+
+  String _themeModeShortLabel(String value) {
+    switch (_normalizeThemeMode(value)) {
+      case 'light':
+        return '浅色';
+      case 'dark':
+        return '深色';
+      case 'system':
+        return '跟随系统';
+      default:
+        return '跟随系统';
+    }
+  }
+
+  ShapeBorder _dialogShape() {
+    return RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(24),
+    );
+  }
+
+  Widget _buildPlayerSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: '播放器',
+      subtitle: '控制连续播放与单集循环行为。',
+      child: Column(
+        children: [
+          SwitchListTile(
+            value: app.settings.autoPlayNext,
+            onChanged: app.setAutoPlayNext,
+            title: const Text('自动播放下一集'),
+          ),
+          const Divider(height: 1),
+          SwitchListTile(
+            value: app.settings.loopPlayback,
+            onChanged: app.setLoopPlayback,
+            title: const Text('单集循环播放'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppearanceSection(BuildContext context, AppController app) {
+    final themeMode = _normalizeThemeMode(app.settings.appThemeMode);
+    return _SettingsPanel(
+      title: '外观',
+      subtitle: '调整应用主题模式。',
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('主题模式'),
+            const SizedBox(height: 8),
+            SegmentedButton<String>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 'system', label: Text('跟随系统')),
+                ButtonSegment(value: 'light', label: Text('浅色')),
+                ButtonSegment(value: 'dark', label: Text('深色')),
+              ],
+              selected: {themeMode},
+              onSelectionChanged: (next) {
+                if (next.isEmpty) return;
+                app.setAppThemeMode(next.first);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubtitleSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: '字幕与辅助',
+      subtitle: '管理默认字幕地址和最近使用记录。',
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              value: app.settings.subtitleEnabled,
+              onChanged: app.setSubtitleEnabled,
+              title: const Text('启用字幕（URL）'),
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 8),
+            _SettingsFormFieldRow(
+              title: '默认字幕 URL',
+              description: '支持 `.vtt` 和 `.srt`，播放器会优先加载这里保存的地址。',
+              controller: _subtitleController,
+              hintText: 'https://example.com/subtitles.vtt',
+              buttonLabel: '保存',
+              onSubmit: () => app.setDefaultSubtitleUrl(_subtitleController.text),
+            ),
+            if (app.settings.recentSubtitleUrls.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                '最近使用',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: app.settings.recentSubtitleUrls.map<Widget>((url) {
+                  return ActionChip(
+                    label: SizedBox(
+                      width: 220,
+                      child: Text(url, overflow: TextOverflow.ellipsis),
+                    ),
+                    onPressed: () => app.setDefaultSubtitleUrl(url),
+                  );
+                }).toList(),
               ),
             ],
-          ),
+          ],
         ),
-        _SettingsPanel(
-          title: 'QoS 诊断汇总',
-          subtitle: '查看启动、缓冲、重试和错误统计。',
-          child: ListTile(
-            title: const Text('播放质量监控'),
-            subtitle: Text(
-              '会话:${app.qosSessionCount}  平均启动:${app.qosAvgStartupMs}ms\n'
-              '缓冲:${app.qosBufferEvents}次/${app.qosBufferTotalMs}ms  '
-              '重试:${app.qosRetryCount}  错误:${app.qosErrorCount}',
+      ),
+    );
+  }
+
+  Widget _buildAdFilterSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: '广告过滤',
+      subtitle: '过滤 HLS 分片和广告相关链接。',
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              value: app.settings.hlsAdFilterEnabled,
+              onChanged: app.setHlsAdFilterEnabled,
+              title: const Text('启用广告过滤'),
+              subtitle: const Text('会同时过滤 HLS 分片、搜索结果、剧集列表中的广告链接'),
+              contentPadding: EdgeInsets.zero,
             ),
-            trailing: TextButton(
-              onPressed: app.resetQosStats,
-              child: const Text('重置'),
+            const SizedBox(height: 8),
+            _SettingsActionRow(
+              icon: Icons.rule_folder_outlined,
+              title: '自定义规则',
+              description: '当前 ${app.settings.adFilters.length} 条规则，可用于过滤 URL 或关键片段。',
+              buttonLabel: '添加规则',
+              onPressed: () => _showAddFilterDialog(context),
+            ),
+            const SizedBox(height: 8),
+            if (app.settings.adFilters.isEmpty)
+              const _SettingsInfoTile(
+                icon: Icons.inbox_outlined,
+                title: '暂无自定义规则',
+                description: '添加后会在播放链路和搜索结果中按规则过滤广告链接。',
+              )
+            else
+              ...app.settings.adFilters.map<Widget>((filter) {
+                return Column(
+                  children: [
+                    _SettingsToggleActionRow(
+                      value: filter.enabled,
+                      onChanged: (value) => app.toggleAdFilter(filter.id, value),
+                      title: filter.pattern,
+                      description: filter.type.label,
+                      buttonIcon: Icons.delete_outline,
+                      buttonTooltip: '删除规则',
+                      onAction: () => app.removeAdFilter(filter.id),
+                    ),
+                    if (filter.id != app.settings.adFilters.last.id)
+                      const Divider(height: 1, indent: 14),
+                  ],
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdultFilterSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: '内容过滤',
+      subtitle: '在首页和搜索结果中过滤敏感关键词内容。',
+      child: SwitchListTile(
+        value: app.settings.adultFilterEnabled,
+        onChanged: app.setAdultFilter,
+        title: const Text('成人内容过滤'),
+        subtitle: const Text('在首页、搜索结果中过滤敏感关键词内容'),
+      ),
+    );
+  }
+
+  Widget _buildRecommendSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: '推荐配置',
+      subtitle: '控制豆瓣热门入口及接口地址。',
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              value: app.settings.doubanHotEnabled,
+              onChanged: app.setDoubanHotEnabled,
+              title: const Text('启用豆瓣热门推荐'),
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 8),
+            _SettingsFormFieldRow(
+              title: '豆瓣接口地址',
+              description: '用于首页热门推荐，留空时会回退到默认接口地址。',
+              controller: _doubanEndpointController,
+              hintText: AppSettings.defaultDoubanHotEndpoint,
+              buttonLabel: '保存',
+              onSubmit: () => app.setDoubanHotEndpoint(_doubanEndpointController.text),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNetworkSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: '网络与代理',
+      subtitle: '设置通用代理和 HLS 专用代理。',
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SettingsFormFieldRow(
+              title: '通用代理地址',
+              description: '用于 `/proxy` 请求转发，适合常规视频与接口请求。',
+              controller: _proxyController,
+              hintText: 'http://127.0.0.1:9978',
+              buttonLabel: '保存',
+              onSubmit: () => app.setProxyBaseUrl(_proxyController.text),
+            ),
+            const SizedBox(height: 12),
+            _SettingsFormFieldRow(
+              title: 'HLS 代理地址',
+              description: '为空时复用通用代理，适合单独处理 HLS 播放流。',
+              controller: _hlsProxyController,
+              hintText: 'http://127.0.0.1:9979',
+              buttonLabel: '保存',
+              onSubmit: () => app.setHlsProxyBaseUrl(_hlsProxyController.text),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConfigSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: '配置管理',
+      subtitle: '导出或导入当前应用配置。',
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _showExportDialog(context),
+                icon: const Icon(Icons.ios_share_outlined),
+                label: const Text('导出'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: () => _showImportDialog(context),
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('导入'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDataSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: '数据管理',
+      subtitle: '清理历史、搜索和收藏数据。',
+      child: Column(
+        children: [
+          _SettingsDangerRow(
+            icon: Icons.history_toggle_off_rounded,
+            title: '清空观看历史',
+            description: '${app.history.length} 条记录',
+            actionLabel: '清空',
+            onTap: () => _confirmAndRun(
+              context,
+              title: '清空观看历史',
+              message: '此操作不可恢复，是否继续？',
+              onConfirm: app.clearWatchHistory,
             ),
           ),
-        ),
-        const SizedBox(height: 12),
+          const Divider(height: 1, indent: 14),
+          _SettingsDangerRow(
+            icon: Icons.search_off_rounded,
+            title: '清空搜索历史',
+            description: '${app.recentSearches.length} 条记录',
+            actionLabel: '清空',
+            onTap: () => _confirmAndRun(
+              context,
+              title: '清空搜索历史',
+              message: '此操作不可恢复，是否继续？',
+              onConfirm: app.clearSearchHistory,
+            ),
+          ),
+          const Divider(height: 1, indent: 14),
+          _SettingsDangerRow(
+            icon: Icons.heart_broken_outlined,
+            title: '清空收藏',
+            description: '${app.favorites.length} 条记录',
+            actionLabel: '清空',
+            onTap: () => _confirmAndRun(
+              context,
+              title: '清空收藏',
+              message: '此操作不可恢复，是否继续？',
+              onConfirm: app.clearFavorites,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQosSection(BuildContext context, AppController app) {
+    return _SettingsPanel(
+      title: 'QoS 诊断汇总',
+      subtitle: '查看启动、缓冲、重试和错误统计。',
+      child: _SettingsActionRow(
+        icon: Icons.monitor_heart_outlined,
+        title: '播放质量监控',
+        description:
+          '会话:${app.qosSessionCount}  平均启动:${app.qosAvgStartupMs}ms\n'
+          '缓冲:${app.qosBufferEvents}次/${app.qosBufferTotalMs}ms  '
+          '重试:${app.qosRetryCount}  错误:${app.qosErrorCount}',
+        buttonLabel: '重置',
+        onPressed: app.resetQosStats,
+      ),
+    );
+  }
+
+  Widget _buildSourceSection(BuildContext context, AppController app) {
+    return Column(
+      children: [
         _SettingsPanel(
           title: '视频源管理',
           subtitle: '维护聚合搜索与播放所需的数据源。',
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
             child: Row(
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed:
-                        app.probingSources ? null : () => app.refreshSourceSpeeds(),
+                    onPressed: app.probingSources ? null : () => app.refreshSourceSpeeds(),
                     icon: const Icon(Icons.speed),
                     label: Text(app.probingSources ? '测速中' : '测速'),
                   ),
@@ -485,68 +653,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        if (app.sources.isEmpty)
-          const Text('暂无视频源')
-        else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: app.sources.length,
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 320,
-              mainAxisExtent: 188,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemBuilder: (context, index) {
-              final source = app.sources[index];
-              return _SourceGridCard(
-                source: source,
-                latencyText: _formatLatency(app.sourceLatencyMs[source.id]),
-                onToggleEnabled: (v) => app.upsertSource(source.copyWith(enabled: v)),
-                onEdit: () => _showSourceEditor(context, source: source),
-                onDelete: source.isDefault ? null : () => app.deleteSource(source.id),
-              );
-            },
-          ),
         const SizedBox(height: 12),
-        const _SectionTitle('关于'),
-        _SettingsPanel(
-          title: '关于 ChiTV',
-          subtitle: '版本、作者与仓库信息。',
-          child: Column(
-            children: [
-              const ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('App 描述'),
-                subtitle: Text(_appDescription),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.new_releases_outlined),
-                title: const Text('版本号'),
-                subtitle: Text(_appVersion),
-              ),
-              const Divider(height: 1),
-              const ListTile(
-                leading: Icon(Icons.person_outline),
-                title: Text('作者'),
-                subtitle: Text(_author),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.code_outlined),
-                title: const Text('GitHub 仓库'),
-                subtitle: const Text(_githubUrl),
-                trailing: const Icon(Icons.open_in_new),
-                onTap: _openGithubRepo,
-                onLongPress: () => _copyToClipboard(_githubUrl, '仓库链接已复制'),
-              ),
-            ],
+        if (app.sources.isEmpty)
+          _SettingsPanel(
+            title: '源列表',
+            subtitle: '当前还没有可用视频源。',
+            child: const ListTile(
+              leading: Icon(Icons.inbox_outlined),
+              title: Text('暂无视频源'),
+              subtitle: Text('可以先添加一个自定义源，或稍后再来配置。'),
+            ),
+          )
+        else
+          _SettingsPanel(
+            title: '源列表',
+            subtitle: '按启用状态、延迟和地址查看当前视频源。',
+            child: Column(
+              children: [
+                for (var i = 0; i < app.sources.length; i++) ...[
+                  _SourceListRow(
+                    source: app.sources[i],
+                    latencyText: _formatLatency(app.sourceLatencyMs[app.sources[i].id]),
+                    onToggleEnabled: (v) =>
+                        app.upsertSource(app.sources[i].copyWith(enabled: v)),
+                    onEdit: () => _showSourceEditor(context, source: app.sources[i]),
+                    onDelete: app.sources[i].isDefault
+                        ? null
+                        : () => app.deleteSource(app.sources[i].id),
+                  ),
+                  if (i != app.sources.length - 1) const Divider(height: 1, indent: 14),
+                ],
+              ],
+            ),
           ),
-        ),
       ],
+    );
+  }
+
+  Widget _buildAboutSection(BuildContext context) {
+    return _SettingsPanel(
+      title: '关于 ChiTV',
+      subtitle: '版本、作者与仓库信息。',
+      child: Column(
+        children: [
+          _InfoRow(
+            icon: Icons.info_outline,
+            title: 'App 描述',
+            value: _appDescription,
+          ),
+          const Divider(height: 1),
+          _InfoRow(
+            icon: Icons.new_releases_outlined,
+            title: '版本号',
+            value: _appVersion,
+          ),
+          const Divider(height: 1),
+          _InfoRow(
+            icon: Icons.person_outline,
+            title: '作者',
+            value: _author,
+          ),
+          const Divider(height: 1),
+          _InfoRow(
+            icon: Icons.code_outlined,
+            title: 'GitHub 仓库',
+            value: _githubUrl,
+            trailing: const Icon(Icons.open_in_new),
+            onTap: _openGithubRepo,
+            onLongPress: () => _copyToClipboard(_githubUrl, '仓库链接已复制'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -597,6 +774,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: pageContext,
       builder: (ctx) {
         return AlertDialog(
+          shape: _dialogShape(),
           title: Text(title),
           content: Text(message),
           actions: [
@@ -629,6 +807,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
+          shape: _dialogShape(),
           title: const Text('导出配置 JSON'),
           content: SizedBox(
             width: 520,
@@ -665,6 +844,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
+          shape: _dialogShape(),
           title: const Text('导入配置 JSON'),
           content: SizedBox(
             width: 520,
@@ -717,6 +897,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
+          shape: _dialogShape(),
           title: Text(source == null ? '新增视频源' : '编辑视频源'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -771,6 +952,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return StatefulBuilder(
           builder: (ctx, setLocalState) {
             return AlertDialog(
+              shape: _dialogShape(),
               title: const Text('新增过滤规则'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -838,12 +1020,226 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 4),
+      padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
       child: Text(
         text,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.2,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
+      ),
+    );
+  }
+}
+
+class _SettingsEntryCard extends StatelessWidget {
+  const _SettingsEntryCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.stat,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String stat;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, size: 20, color: scheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: _SettingsValueBadge(text: stat),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: scheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsGroupCard extends StatelessWidget {
+  const _SettingsGroupCard({
+    required this.children,
+  });
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            children[i],
+            if (i != children.length - 1)
+              const Divider(height: 1, indent: 66, endIndent: 14),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsValueBadge extends StatelessWidget {
+  const _SettingsValueBadge({
+    required this.text,
+  });
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 132),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: scheme.secondaryContainer.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.right,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: scheme.onSecondaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsSectionPage extends StatelessWidget {
+  const _SettingsSectionPage({
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: ChiTvNavTitle(
+          eyebrow: 'Settings',
+          title: title,
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 28),
+        children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  scheme.primaryContainer.withValues(alpha: 0.78),
+                  scheme.surfaceContainerHighest.withValues(alpha: 0.92),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: scheme.surface.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'Section',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface,
+                        ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          ...children,
+        ],
       ),
     );
   }
@@ -862,27 +1258,118 @@ class _SettingsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      color: scheme.surface.withValues(alpha: 0.96),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(
+          color: scheme.outlineVariant.withValues(alpha: 0.35),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: scheme.primary,
+                        ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.35,
                       ),
                 ),
-                const SizedBox(height: 4),
-                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 14),
               ],
             ),
           ),
-          child,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: scheme.outlineVariant.withValues(alpha: 0.28),
+                ),
+              ),
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  listTileTheme: ListTileThemeData(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 2,
+                    ),
+                    iconColor: scheme.primary,
+                    textColor: scheme.onSurface,
+                  ),
+                  dividerColor: scheme.outlineVariant.withValues(alpha: 0.3),
+                  inputDecorationTheme: InputDecorationTheme(
+                    filled: true,
+                    fillColor: scheme.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: scheme.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: scheme.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color: scheme.primary.withValues(alpha: 0.7),
+                        width: 1.4,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                  ),
+                  switchTheme: SwitchThemeData(
+                    thumbColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return scheme.onPrimary;
+                      }
+                      return scheme.outline;
+                    }),
+                    trackColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return scheme.primary;
+                      }
+                      return scheme.surfaceContainerHighest;
+                    }),
+                  ),
+                ),
+                child: child,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -925,8 +1412,8 @@ class _SettingsStatPill extends StatelessWidget {
   }
 }
 
-class _SourceGridCard extends StatelessWidget {
-  const _SourceGridCard({
+class _SourceListRow extends StatelessWidget {
+  const _SourceListRow({
     required this.source,
     required this.latencyText,
     required this.onToggleEnabled,
@@ -942,77 +1429,413 @@ class _SourceGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    source.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                Switch(
-                  value: source.enabled,
-                  onChanged: onToggleEnabled,
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(999),
+                child: Icon(Icons.cloud_outlined, color: scheme.primary, size: 20),
               ),
-              child: Text(
-                '延迟: $latencyText',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              source.apiUrl,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('编辑'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: onDelete,
-                    icon: Icon(
-                      source.isDefault ? Icons.lock_outline : Icons.delete_outline,
-                      size: 16,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      source.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    label: Text(source.isDefault ? '默认源' : '删除'),
+                    const SizedBox(height: 4),
+                    Text(
+                      source.apiUrl,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _SettingsValueBadge(text: '延迟 $latencyText'),
+                        _SettingsValueBadge(text: source.enabled ? '已启用' : '已停用'),
+                        if (source.isDefault) const _SettingsValueBadge(text: '默认源'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Switch(
+                value: source.enabled,
+                onChanged: onToggleEnabled,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('编辑'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: onDelete,
+                  icon: Icon(
+                    source.isDefault ? Icons.lock_outline : Icons.delete_outline,
+                    size: 16,
+                  ),
+                  label: Text(source.isDefault ? '默认源' : '删除'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+    this.trailing,
+    this.onTap,
+    this.onLongPress,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: scheme.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, size: 18, color: scheme.primary),
+      ),
+      title: Text(title),
+      subtitle: Text(
+        value,
+        maxLines: title == 'App 描述' ? 3 : 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: trailing,
+      onTap: onTap,
+      onLongPress: onLongPress,
+    );
+  }
+}
+
+class _SettingsFormFieldRow extends StatelessWidget {
+  const _SettingsFormFieldRow({
+    required this.title,
+    required this.description,
+    required this.controller,
+    required this.hintText,
+    required this.buttonLabel,
+    required this.onSubmit,
+  });
+
+  final String title;
+  final String description;
+  final TextEditingController controller;
+  final String hintText;
+  final String buttonLabel;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: scheme.surface.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 10),
+              if (compact) ...[
+                TextField(
+                  controller: controller,
+                  decoration: InputDecoration(
+                    hintText: hintText,
                   ),
                 ),
-              ],
-            ),
-          ],
-        ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonal(
+                    onPressed: onSubmit,
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                    child: Text(buttonLabel),
+                  ),
+                ),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        decoration: InputDecoration(
+                          hintText: hintText,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonal(
+                      onPressed: onSubmit,
+                      style: FilledButton.styleFrom(minimumSize: const Size(72, 52)),
+                      child: Text(buttonLabel),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SettingsActionRow extends StatelessWidget {
+  const _SettingsActionRow({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.buttonLabel,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final String buttonLabel;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: scheme.surface.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, size: 18, color: scheme.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          description,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: compact ? double.infinity : null,
+                child: FilledButton.tonal(
+                  onPressed: onPressed,
+                  style: FilledButton.styleFrom(minimumSize: const Size(88, 44)),
+                  child: Text(buttonLabel),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SettingsToggleActionRow extends StatelessWidget {
+  const _SettingsToggleActionRow({
+    required this.value,
+    required this.onChanged,
+    required this.title,
+    required this.description,
+    required this.buttonIcon,
+    required this.buttonTooltip,
+    required this.onAction,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final String title;
+  final String description;
+  final IconData buttonIcon;
+  final String buttonTooltip;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
+      subtitle: Text(description),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: onAction,
+            tooltip: buttonTooltip,
+            icon: Icon(buttonIcon),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsInfoTile extends StatelessWidget {
+  const _SettingsInfoTile({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: scheme.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, size: 18, color: scheme.primary),
+      ),
+      title: Text(title),
+      subtitle: Text(description),
+    );
+  }
+}
+
+class _SettingsDangerRow extends StatelessWidget {
+  const _SettingsDangerRow({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.actionLabel,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final String actionLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: scheme.errorContainer.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, size: 18, color: scheme.onErrorContainer),
+      ),
+      title: Text(title),
+      subtitle: Text(description),
+      trailing: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(foregroundColor: scheme.error),
+        child: Text(actionLabel),
+      ),
+      onTap: onTap,
     );
   }
 }

@@ -4,6 +4,7 @@ import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../app/app_theme.dart';
 import '../../core/models/episode_item.dart';
+import '../../core/models/playback_history_item.dart';
 import '../../core/models/video_item.dart';
 import '../player/player_screen.dart';
 
@@ -23,7 +24,8 @@ class _DetailScreenState extends State<DetailScreen> {
   List<EpisodeItem> _episodes = const [];
   final _episodeSearchController = TextEditingController();
   String _episodeQuery = '';
-  bool _episodeAscending = true;
+  _EpisodeStatusFilter _episodeStatusFilter = _EpisodeStatusFilter.all;
+  _EpisodeSortMode _episodeSortMode = _EpisodeSortMode.episodeOrder;
 
   @override
   void initState() {
@@ -52,12 +54,29 @@ class _DetailScreenState extends State<DetailScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final detail = _detail ?? widget.item;
-    final visibleEpisodes = _visibleEpisodes();
+    final visibleEpisodes = _visibleEpisodes(app, detail);
+    final resumeEntry = app.findHistoryForVideo(detail);
+    final resumeTarget = _resolveResumeTarget(resumeEntry);
+    final nextUnwatched = _findNextUnwatchedEpisode(app, detail);
+    final episodeStats = _episodeSummaryStats(app, detail);
+    final overviewBadges = _episodeOverviewBadges(
+      resumeEntry: resumeEntry,
+      resumeTarget: resumeTarget,
+      nextUnwatched: nextUnwatched,
+      episodeStats: episodeStats,
+    );
+    final canResume =
+        resumeEntry != null &&
+        resumeEntry.lastPositionSeconds > 0 &&
+        (_episodes.isEmpty || (resumeTarget?.index ?? -1) >= 0);
 
     return Scaffold(
       extendBody: true,
       appBar: AppBar(
-        title: Text(detail.title),
+        title: ChiTvNavTitle(
+          eyebrow: _sourceName(app, detail.sourceId),
+          title: detail.title,
+        ),
         actions: [
           IconButton(
             onPressed: (_loading || _switchingSource) ? null : _showSwitchSourceSheet,
@@ -162,6 +181,16 @@ class _DetailScreenState extends State<DetailScreen> {
                                           fontSize: 13,
                                         ),
                                       ),
+                                      if (overviewBadges.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: overviewBadges.map((badge) {
+                                            return _EpisodeOverviewBadge(badge: badge);
+                                          }).toList(),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -179,15 +208,40 @@ class _DetailScreenState extends State<DetailScreen> {
                                       foregroundColor: Colors.black,
                                     ),
                                     onPressed: () {
+                                      if (canResume) {
+                                        _openPlayer(
+                                          context,
+                                          detail,
+                                          resumeTarget?.episode,
+                                          resumeTarget?.index ?? -1,
+                                        );
+                                        return;
+                                      }
                                       if (_episodes.isEmpty) {
-                                        _openPlayer(context, detail, null, -1);
+                                        _openPlayer(
+                                          context,
+                                          detail,
+                                          null,
+                                          -1,
+                                          resumeFromHistory: false,
+                                        );
                                         return;
                                       }
                                       final first = _episodes.first;
-                                      _openPlayer(context, detail, first, 0);
+                                      _openPlayer(
+                                        context,
+                                        detail,
+                                        first,
+                                        0,
+                                        resumeFromHistory: false,
+                                      );
                                     },
                                     icon: const Icon(Icons.play_arrow, size: 18),
-                                    label: Text(_episodes.isEmpty ? '立即播放' : '播放第 1 集'),
+                                    label: Text(
+                                      canResume
+                                          ? _resumeButtonLabel(resumeEntry, resumeTarget)
+                                          : (_episodes.isEmpty ? '立即播放' : '播放第 1 集'),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -195,9 +249,35 @@ class _DetailScreenState extends State<DetailScreen> {
                                   child: OutlinedButton.icon(
                                     onPressed: (_loading || _switchingSource)
                                         ? null
-                                        : _showSwitchSourceSheet,
-                                    icon: const Icon(Icons.swap_horiz, size: 18),
-                                    label: const Text('切换片源'),
+                                        : () {
+                                            if (canResume) {
+                                              if (_episodes.isEmpty) {
+                                                _openPlayer(
+                                                  context,
+                                                  detail,
+                                                  null,
+                                                  -1,
+                                                  resumeFromHistory: false,
+                                                );
+                                                return;
+                                              }
+                                              final first = _episodes.first;
+                                              _openPlayer(
+                                                context,
+                                                detail,
+                                                first,
+                                                0,
+                                                resumeFromHistory: false,
+                                              );
+                                              return;
+                                            }
+                                            _showSwitchSourceSheet();
+                                          },
+                                    icon: Icon(
+                                      canResume ? Icons.replay_rounded : Icons.swap_horiz,
+                                      size: 18,
+                                    ),
+                                    label: Text(canResume ? '从头播放' : '切换片源'),
                                   ),
                                 ),
                               ],
@@ -227,6 +307,91 @@ class _DetailScreenState extends State<DetailScreen> {
                                 '共 ${_episodes.length} 集，可按名称搜索或按集数快速跳转',
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: episodeStats.map((stat) {
+                                  return _EpisodeSummaryChip(stat: stat);
+                                }).toList(),
+                              ),
+                              if (canResume && resumeTarget != null) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.play_circle_outline_rounded,
+                                        size: 18,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _resumeSummaryText(resumeEntry, resumeTarget),
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              if (!canResume && nextUnwatched != null) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .secondaryContainer
+                                        .withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.playlist_play_rounded,
+                                        size: 18,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          '下一未看集：第 ${nextUnwatched.originalIndex + 1} 集 ${nextUnwatched.episode.name}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      FilledButton.tonal(
+                                        onPressed: () => _openPlayer(
+                                          context,
+                                          detail,
+                                          nextUnwatched.episode,
+                                          nextUnwatched.originalIndex,
+                                          resumeFromHistory: false,
+                                        ),
+                                        child: const Text('播放'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 12),
                               Row(
                                 children: [
@@ -259,17 +424,39 @@ class _DetailScreenState extends State<DetailScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   IconButton.filledTonal(
-                                    tooltip: _episodeAscending ? '倒序' : '正序',
+                                    tooltip:
+                                        _episodeSortMode == _EpisodeSortMode.episodeOrder
+                                        ? '按最近观看排序'
+                                        : '按集数排序',
                                     onPressed: () {
-                                      setState(() => _episodeAscending = !_episodeAscending);
+                                      setState(() {
+                                        _episodeSortMode =
+                                            _episodeSortMode == _EpisodeSortMode.episodeOrder
+                                            ? _EpisodeSortMode.recentWatched
+                                            : _EpisodeSortMode.episodeOrder;
+                                      });
                                     },
                                     icon: Icon(
-                                      _episodeAscending
-                                          ? Icons.arrow_downward_rounded
-                                          : Icons.arrow_upward_rounded,
+                                      _episodeSortMode == _EpisodeSortMode.episodeOrder
+                                          ? Icons.schedule_rounded
+                                          : Icons.format_list_numbered_rounded,
                                     ),
                                   ),
                                 ],
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _EpisodeStatusFilter.values.map((filter) {
+                                  return ChoiceChip(
+                                    label: Text(filter.label),
+                                    selected: _episodeStatusFilter == filter,
+                                    onSelected: (_) {
+                                      setState(() => _episodeStatusFilter = filter);
+                                    },
+                                  );
+                                }).toList(),
                               ),
                             ],
                           ),
@@ -293,7 +480,13 @@ class _DetailScreenState extends State<DetailScreen> {
                                 title: '立即播放',
                                 imageUrl: detail.poster,
                                 subtitle: '当前资源暂未提供分集信息',
+                                statusText: canResume
+                                    ? _resumeSummaryText(resumeEntry, resumeTarget)
+                                    : '当前资源暂未提供分集信息',
+                                markers: const [],
+                                actionLabel: canResume ? '继续播放' : '立即播放',
                                 onPlay: () => _openPlayer(context, detail, null, -1),
+                                highlight: canResume,
                               );
                             },
                           )
@@ -316,6 +509,20 @@ class _DetailScreenState extends State<DetailScreen> {
                                     title: ep.name,
                                     imageUrl: detail.poster,
                                     subtitle: '第 ${entry.originalIndex + 1} 集',
+                                    statusText: _episodeStatusText(entry.history),
+                                    markers: _episodeMarkers(
+                                      entry,
+                                      resumeTarget: resumeTarget,
+                                      nextUnwatched: nextUnwatched,
+                                    ),
+                                    progressValue: _episodeProgressValue(entry.history),
+                                    actionLabel: _episodeActionLabel(
+                                      entry,
+                                      resumeTarget: resumeTarget,
+                                      nextUnwatched: nextUnwatched,
+                                    ),
+                                    highlight: canResume &&
+                                        resumeTarget?.index == entry.originalIndex,
                                     onPlay: () => _openPlayer(
                                       context,
                                       detail,
@@ -431,7 +638,9 @@ class _DetailScreenState extends State<DetailScreen> {
     VideoItem detail,
     EpisodeItem? episode,
     int index,
+    {bool resumeFromHistory = true}
   ) {
+    final app = AppScope.read(context);
     final playable = VideoItem(
       id: detail.id,
       title: episode == null ? detail.title : '${detail.title} ${episode.name}',
@@ -441,6 +650,7 @@ class _DetailScreenState extends State<DetailScreen> {
       sourceId: detail.sourceId,
       vodPlayUrl: detail.vodPlayUrl,
     );
+    final resumeEntry = resumeFromHistory ? app.findHistoryForVideo(playable) : null;
 
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -449,9 +659,48 @@ class _DetailScreenState extends State<DetailScreen> {
           episodes: _episodes,
           currentEpisodeIndex: index,
           seriesTitle: detail.title,
+          initialPositionSeconds: resumeEntry?.lastPositionSeconds ?? 0,
         ),
       ),
     );
+  }
+
+  _ResumeTarget? _resolveResumeTarget(PlaybackHistoryItem? entry) {
+    if (entry == null) return null;
+    if (_episodes.isEmpty) {
+      return const _ResumeTarget(episode: null, index: -1);
+    }
+
+    final index = _episodes.indexWhere((episode) => episode.url == entry.video.url);
+    if (index >= 0) {
+      return _ResumeTarget(episode: _episodes[index], index: index);
+    }
+
+    return const _ResumeTarget(episode: null, index: -1);
+  }
+
+  String _resumeButtonLabel(
+    PlaybackHistoryItem entry,
+    _ResumeTarget? target,
+  ) {
+    final seconds = entry.lastPositionSeconds;
+    final progress = seconds >= 60 ? '${seconds ~/ 60} 分钟' : '${seconds}s';
+    if (target?.index != null && (target?.index ?? -1) >= 0) {
+      return '继续播放 第 ${(target!.index) + 1} 集';
+    }
+    return '继续播放 · $progress';
+  }
+
+  String _resumeSummaryText(
+    PlaybackHistoryItem entry,
+    _ResumeTarget? target,
+  ) {
+    final seconds = entry.lastPositionSeconds;
+    final progress = seconds >= 60 ? '${seconds ~/ 60} 分钟' : '${seconds}s';
+    if (target != null && target.index >= 0) {
+      return '上次看到第 ${target.index + 1} 集，已观看 $progress';
+    }
+    return '上次播放停在 $progress，可直接继续观看';
   }
 
   String _sourceName(AppController app, String sourceId) {
@@ -461,31 +710,226 @@ class _DetailScreenState extends State<DetailScreen> {
     return sourceId;
   }
 
-  List<_EpisodeEntry> _visibleEpisodes() {
+  List<_EpisodeEntry> _visibleEpisodes(AppController app, VideoItem detail) {
     final entries = <_EpisodeEntry>[
       for (var i = 0; i < _episodes.length; i++)
-        _EpisodeEntry(episode: _episodes[i], originalIndex: i),
+        _EpisodeEntry(
+          episode: _episodes[i],
+          originalIndex: i,
+          history: app.findHistoryForVideo(_episodePlayableItem(detail, _episodes[i])),
+        ),
     ];
 
-    if (_episodeQuery.isEmpty) {
-      final sorted = [...entries];
-      if (!_episodeAscending) {
-        return sorted.reversed.toList();
-      }
-      return sorted;
+    var filtered = [...entries];
+
+    switch (_episodeStatusFilter) {
+      case _EpisodeStatusFilter.all:
+        break;
+      case _EpisodeStatusFilter.inProgress:
+        filtered = filtered
+            .where((entry) => (entry.history?.lastPositionSeconds ?? 0) > 0)
+            .toList();
+        break;
+      case _EpisodeStatusFilter.unwatched:
+        filtered = filtered.where((entry) => entry.history == null).toList();
+        break;
     }
 
-    final query = _episodeQuery.toLowerCase();
-    final number = int.tryParse(query);
-    final filtered = entries.where((entry) {
-      if (number != null && entry.originalIndex + 1 == number) return true;
-      return entry.episode.name.toLowerCase().contains(query);
-    }).toList();
-
-    if (!_episodeAscending) {
-      return filtered.reversed.toList();
+    if (_episodeQuery.isNotEmpty) {
+      final query = _episodeQuery.toLowerCase();
+      final number = int.tryParse(query);
+      filtered = filtered.where((entry) {
+        if (number != null && entry.originalIndex + 1 == number) return true;
+        return entry.episode.name.toLowerCase().contains(query);
+      }).toList();
     }
+
+    if (_episodeSortMode == _EpisodeSortMode.recentWatched) {
+      filtered.sort((a, b) {
+        final aw = a.history?.watchedAt;
+        final bw = b.history?.watchedAt;
+        if (aw == null && bw == null) {
+          return a.originalIndex.compareTo(b.originalIndex);
+        }
+        if (aw == null) return 1;
+        if (bw == null) return -1;
+        return bw.compareTo(aw);
+      });
+      return filtered;
+    }
+
     return filtered;
+  }
+
+  VideoItem _episodePlayableItem(VideoItem detail, EpisodeItem episode) {
+    return VideoItem(
+      id: detail.id,
+      title: '${detail.title} ${episode.name}',
+      description: detail.description,
+      poster: detail.poster,
+      url: episode.url,
+      sourceId: detail.sourceId,
+      vodPlayUrl: detail.vodPlayUrl,
+    );
+  }
+
+  String _episodeStatusText(PlaybackHistoryItem? entry) {
+    if (entry == null) return '未播放';
+    final seconds = entry.lastPositionSeconds;
+    if (seconds <= 0) return '刚开始';
+    return seconds >= 60 ? '已看 ${seconds ~/ 60} 分钟' : '已看 ${seconds}s';
+  }
+
+  List<_EpisodeSummaryStat> _episodeSummaryStats(
+    AppController app,
+    VideoItem detail,
+  ) {
+    var inProgress = 0;
+    var started = 0;
+    var untouched = 0;
+
+    for (final episode in _episodes) {
+      final history = app.findHistoryForVideo(_episodePlayableItem(detail, episode));
+      if (history == null) {
+        untouched += 1;
+        continue;
+      }
+      started += 1;
+      if (history.lastPositionSeconds > 0) {
+        inProgress += 1;
+      }
+    }
+
+    return [
+      _EpisodeSummaryStat(label: '进行中', value: '$inProgress', emphasize: inProgress > 0),
+      _EpisodeSummaryStat(label: '已开始', value: '$started'),
+      _EpisodeSummaryStat(label: '未播放', value: '$untouched'),
+    ];
+  }
+
+  List<_EpisodeOverviewData> _episodeOverviewBadges({
+    required PlaybackHistoryItem? resumeEntry,
+    required _ResumeTarget? resumeTarget,
+    required _EpisodeEntry? nextUnwatched,
+    required List<_EpisodeSummaryStat> episodeStats,
+  }) {
+    final badges = <_EpisodeOverviewData>[
+      _EpisodeOverviewData(
+        icon: Icons.video_library_outlined,
+        text: _episodes.isEmpty ? '单条资源' : '共 ${_episodes.length} 集',
+      ),
+    ];
+
+    final inProgress = episodeStats.firstWhere(
+      (stat) => stat.label == '进行中',
+      orElse: () => const _EpisodeSummaryStat(label: '进行中', value: '0'),
+    );
+    if (int.tryParse(inProgress.value) case final value? when value > 0) {
+      badges.add(
+        _EpisodeOverviewData(
+          icon: Icons.timelapse_rounded,
+          text: '${inProgress.value} 集在追',
+          emphasize: true,
+        ),
+      );
+    }
+
+    if (resumeEntry != null && resumeTarget != null && resumeTarget.index >= 0) {
+      badges.add(
+        _EpisodeOverviewData(
+          icon: Icons.play_circle_fill_rounded,
+          text: '续播到第 ${resumeTarget.index + 1} 集',
+          emphasize: true,
+        ),
+      );
+    } else if (nextUnwatched != null) {
+      badges.add(
+        _EpisodeOverviewData(
+          icon: Icons.skip_next_rounded,
+          text: '推荐看第 ${nextUnwatched.originalIndex + 1} 集',
+        ),
+      );
+    }
+
+    return badges;
+  }
+
+  List<_EpisodeMarkerData> _episodeMarkers(
+    _EpisodeEntry entry, {
+    required _ResumeTarget? resumeTarget,
+    required _EpisodeEntry? nextUnwatched,
+  }) {
+    final markers = <_EpisodeMarkerData>[];
+    if ((resumeTarget?.index ?? -1) == entry.originalIndex) {
+      markers.add(
+        const _EpisodeMarkerData(
+          text: '继续这里',
+          icon: Icons.play_circle_fill_rounded,
+          emphasize: true,
+        ),
+      );
+    }
+    if ((nextUnwatched?.originalIndex ?? -1) == entry.originalIndex) {
+      markers.add(
+        const _EpisodeMarkerData(
+          text: '下一集',
+          icon: Icons.skip_next_rounded,
+        ),
+      );
+    }
+    if (entry.history != null) {
+      markers.add(
+        _EpisodeMarkerData(
+          text: '最近看过 ${_formatRelativeWatchTime(entry.history!.watchedAt)}',
+          icon: Icons.history_rounded,
+        ),
+      );
+    }
+    return markers;
+  }
+
+  String _episodeActionLabel(
+    _EpisodeEntry entry, {
+    required _ResumeTarget? resumeTarget,
+    required _EpisodeEntry? nextUnwatched,
+  }) {
+    if ((resumeTarget?.index ?? -1) == entry.originalIndex) {
+      return '继续播放';
+    }
+    if ((nextUnwatched?.originalIndex ?? -1) == entry.originalIndex) {
+      return '播放下一集';
+    }
+    return '播放本集';
+  }
+
+  double? _episodeProgressValue(PlaybackHistoryItem? entry) {
+    if (entry == null || entry.lastPositionSeconds <= 0) return null;
+    const baselineSeconds = 45 * 60;
+    return (entry.lastPositionSeconds / baselineSeconds).clamp(0.0, 1.0);
+  }
+
+  String _formatRelativeWatchTime(DateTime watchedAt) {
+    final diff = DateTime.now().difference(watchedAt.toLocal());
+    if (diff.inMinutes < 1) return '刚刚';
+    if (diff.inHours < 1) return '${diff.inMinutes} 分钟前';
+    if (diff.inDays < 1) return '${diff.inHours} 小时前';
+    if (diff.inDays < 7) return '${diff.inDays} 天前';
+    return '${watchedAt.month}-${watchedAt.day}';
+  }
+
+  _EpisodeEntry? _findNextUnwatchedEpisode(AppController app, VideoItem detail) {
+    for (var i = 0; i < _episodes.length; i++) {
+      final episode = _episodes[i];
+      final history = app.findHistoryForVideo(_episodePlayableItem(detail, episode));
+      if (history == null || history.lastPositionSeconds <= 0) {
+        return _EpisodeEntry(
+          episode: episode,
+          originalIndex: i,
+          history: history,
+        );
+      }
+    }
+    return null;
   }
 
   Future<void> _showEpisodeJumpDialog(VideoItem detail) async {
@@ -539,10 +983,58 @@ class _EpisodeEntry {
   const _EpisodeEntry({
     required this.episode,
     required this.originalIndex,
+    required this.history,
   });
 
   final EpisodeItem episode;
   final int originalIndex;
+  final PlaybackHistoryItem? history;
+}
+
+class _ResumeTarget {
+  const _ResumeTarget({
+    required this.episode,
+    required this.index,
+  });
+
+  final EpisodeItem? episode;
+  final int index;
+}
+
+class _EpisodeMarkerData {
+  const _EpisodeMarkerData({
+    required this.text,
+    required this.icon,
+    this.emphasize = false,
+  });
+
+  final String text;
+  final IconData icon;
+  final bool emphasize;
+}
+
+class _EpisodeOverviewData {
+  const _EpisodeOverviewData({
+    required this.icon,
+    required this.text,
+    this.emphasize = false,
+  });
+
+  final IconData icon;
+  final String text;
+  final bool emphasize;
+}
+
+class _EpisodeSummaryStat {
+  const _EpisodeSummaryStat({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasize;
 }
 
 class _EpisodeGridCard extends StatelessWidget {
@@ -550,17 +1042,30 @@ class _EpisodeGridCard extends StatelessWidget {
     required this.title,
     required this.imageUrl,
     required this.subtitle,
+    required this.statusText,
+    required this.markers,
     required this.onPlay,
+    required this.actionLabel,
+    this.progressValue,
+    this.highlight = false,
   });
 
   final String title;
   final String imageUrl;
   final String subtitle;
+  final String statusText;
+  final List<_EpisodeMarkerData> markers;
   final VoidCallback onPlay;
+  final String actionLabel;
+  final double? progressValue;
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
     return Card(
+      color: highlight
+          ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.45)
+          : null,
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -595,6 +1100,35 @@ class _EpisodeGridCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
+              statusText,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (markers.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: markers.map((marker) {
+                  return _EpisodeMarkerChip(marker: marker);
+                }).toList(),
+              ),
+            ],
+            if (progressValue != null) ...[
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  minHeight: 6,
+                  value: progressValue,
+                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                ),
+              ),
+            ],
+            const SizedBox(height: 6),
+            Text(
               title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -606,11 +1140,135 @@ class _EpisodeGridCard extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: onPlay,
                 icon: const Icon(Icons.play_arrow, size: 16),
-                label: const Text('播放本集'),
+                label: Text(actionLabel),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EpisodeSummaryChip extends StatelessWidget {
+  const _EpisodeSummaryChip({
+    required this.stat,
+  });
+
+  final _EpisodeSummaryStat stat;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: stat.emphasize
+            ? scheme.primary.withValues(alpha: 0.12)
+            : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: RichText(
+        text: TextSpan(
+          style: Theme.of(context).textTheme.bodySmall,
+          children: [
+            TextSpan(
+              text: '${stat.value} ',
+              style: TextStyle(
+                color: stat.emphasize ? scheme.primary : scheme.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            TextSpan(
+              text: stat.label,
+              style: TextStyle(
+                color: stat.emphasize ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EpisodeOverviewBadge extends StatelessWidget {
+  const _EpisodeOverviewBadge({
+    required this.badge,
+  });
+
+  final _EpisodeOverviewData badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: badge.emphasize
+            ? Colors.white.withValues(alpha: 0.2)
+            : Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: badge.emphasize ? 0.28 : 0.12),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            badge.icon,
+            size: 14,
+            color: badge.emphasize ? Colors.white : Colors.white70,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            badge.text,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: badge.emphasize ? Colors.white : Colors.white70,
+              fontWeight: badge.emphasize ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EpisodeMarkerChip extends StatelessWidget {
+  const _EpisodeMarkerChip({
+    required this.marker,
+  });
+
+  final _EpisodeMarkerData marker;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: marker.emphasize
+            ? scheme.primary.withValues(alpha: 0.14)
+            : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            marker.icon,
+            size: 14,
+            color: marker.emphasize ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            marker.text,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: marker.emphasize ? scheme.primary : scheme.onSurfaceVariant,
+              fontWeight: marker.emphasize ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -668,4 +1326,19 @@ class _SourceSwitchCard extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _EpisodeStatusFilter {
+  all('全部'),
+  inProgress('有进度'),
+  unwatched('未播放');
+
+  const _EpisodeStatusFilter(this.label);
+
+  final String label;
+}
+
+enum _EpisodeSortMode {
+  episodeOrder,
+  recentWatched,
 }

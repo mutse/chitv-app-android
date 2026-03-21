@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
@@ -6,8 +7,10 @@ import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../app/app_theme.dart';
 import '../../core/models/douban_item.dart';
+import '../../core/models/playback_history_item.dart';
 import '../../core/models/video_item.dart';
 import '../detail/detail_screen.dart';
+import '../player/player_screen.dart';
 import '../settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Set<String> _selectedSourceIds = <String>{};
   bool _sourceSelectionInitialized = false;
   Timer? _searchDebounce;
+  double _largeTitleProgress = 1;
 
   @override
   void dispose() {
@@ -44,32 +48,41 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       extendBody: true,
       appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.88),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              padding: const EdgeInsets.all(6),
-              child: Image.asset('assets/icon.png'),
-            ),
-            const SizedBox(width: 12),
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('ChiTV'),
-                SizedBox(height: 2),
-                Text(
-                  'Android',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+        backgroundColor: Theme.of(context).colorScheme.surface.withValues(
+          alpha: 0.58 + ((1 - _largeTitleProgress) * 0.3),
+        ),
+        surfaceTintColor: Colors.transparent,
+        toolbarHeight: 56,
+        title: const ChiTvNavTitle(
+          eyebrow: 'ChiTV',
+          title: 'Android',
+        ),
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(_largeTitleHeight),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            height: _largeTitleHeight,
+            alignment: Alignment.bottomLeft,
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant.withValues(
+                    alpha: 0.12 + ((1 - _largeTitleProgress) * 0.26),
+                  ),
                 ),
-              ],
+              ),
             ),
-          ],
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 120),
+              opacity: _largeTitleProgress.clamp(0.0, 1.0),
+              child: ChiTvLargeNavHeader(
+                title: _tabTitle(_tab),
+                subtitle: _tabLargeSubtitle(_tab),
+                progress: _largeTitleProgress,
+              ),
+            ),
+          ),
         ),
         actions: [
           if (_tab == 0)
@@ -83,12 +96,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: ChiTvBackground(
-        child: switch (_tab) {
-          0 => _buildHomeTab(context),
-          1 => _buildSearchTab(context),
-          2 => _buildFavoritesTab(context),
-          _ => const SettingsScreen(),
-        },
+        child: NotificationListener<ScrollNotification>(
+          onNotification: _handleScrollNotification,
+          child: switch (_tab) {
+            0 => _buildHomeTab(context),
+            1 => _buildSearchTab(context),
+            2 => _buildFavoritesTab(context),
+            _ => const SettingsScreen(),
+          },
+        ),
       ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -96,7 +112,12 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(24),
           child: NavigationBar(
             selectedIndex: _tab,
-            onDestinationSelected: (v) => setState(() => _tab = v),
+            onDestinationSelected: (v) {
+              setState(() {
+                _tab = v;
+                _largeTitleProgress = 1;
+              });
+            },
             destinations: const [
               NavigationDestination(icon: Icon(Icons.home_rounded), label: '首页'),
               NavigationDestination(icon: Icon(Icons.search), label: '搜索'),
@@ -107,6 +128,40 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  double get _largeTitleHeight => lerpDouble(0, 58, _largeTitleProgress) ?? 58;
+  double get _rootTopInset => lerpDouble(4, 12, _largeTitleProgress) ?? 12;
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical || notification.depth != 0) {
+      return false;
+    }
+    final offset = notification.metrics.pixels.clamp(0.0, 72.0);
+    final next = (1 - (offset / 72)).clamp(0.0, 1.0);
+    if ((next - _largeTitleProgress).abs() < 0.02) {
+      return false;
+    }
+    setState(() => _largeTitleProgress = next);
+    return false;
+  }
+
+  String _tabTitle(int tab) {
+    return switch (tab) {
+      1 => '搜索',
+      2 => '收藏',
+      3 => '设置',
+      _ => '首页',
+    };
+  }
+
+  String _tabLargeSubtitle(int tab) {
+    return switch (tab) {
+      1 => 'Search',
+      2 => 'Favorites',
+      3 => 'Settings',
+      _ => 'Library',
+    };
   }
 
   Widget _buildHomeTab(BuildContext context) {
@@ -132,7 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+          padding: EdgeInsets.fromLTRB(12, _rootTopInset, 12, 12),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -165,6 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     icon: const Icon(Icons.clear),
                                     onPressed: () {
                                       _controller.clear();
+                                      app.clearSearchState();
                                       setState(() {});
                                     },
                                   ),
@@ -284,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 28),
+      padding: EdgeInsets.fromLTRB(12, _rootTopInset, 12, 28),
       children: [
         _LibraryHeroCard(
           title: '搜索结果',
@@ -319,9 +375,10 @@ class _HomeScreenState extends State<HomeScreen> {
             return _VideoGridCard(
               item: item,
               badgeText: _sourceLabel(app, item.sourceId),
+              watchStatusText: _watchStatusText(app.findHistoryForVideo(item)),
               isFavorite: app.isFavorite(item.id),
               onFavoriteToggle: () => app.toggleFavorite(item),
-              onPlay: () => _openDetail(context, item),
+              onPlay: () => _playOrResume(context, item),
               onDetail: () => _openDetail(context, item),
             );
           },
@@ -592,13 +649,13 @@ class _HomeScreenState extends State<HomeScreen> {
         await app.loadDoubanHot();
       },
       child: ListView(
-        padding: const EdgeInsets.only(bottom: 28),
+        padding: EdgeInsets.only(top: _rootTopInset, bottom: 28),
         children: [
           _buildDoubanHotSection(context, app),
           if (app.history.isNotEmpty) ...[
             const _SectionHeader(title: '继续观看', subtitle: '回到上次离开的地方'),
             SizedBox(
-              height: 144,
+              height: 188,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -611,7 +668,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Card(
                         child: InkWell(
                           borderRadius: BorderRadius.circular(18),
-                          onTap: () => _openDetail(context, item),
+                          onTap: () => _resumeHistoryEntry(context, entry),
                           child: Padding(
                             padding: const EdgeInsets.all(14),
                             child: Column(
@@ -654,7 +711,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  '上次进度 ${entry.lastPositionSeconds}s',
+                                  '已看 ${_formatPlaybackProgress(entry.lastPositionSeconds)}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                                 const SizedBox(height: 4),
@@ -663,6 +720,39 @@ class _HomeScreenState extends State<HomeScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                const SizedBox(height: 10),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: LinearProgressIndicator(
+                                    minHeight: 6,
+                                    value: _watchProgressValue(entry.lastPositionSeconds),
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: FilledButton.tonal(
+                                        onPressed: () => _playVideo(
+                                          context,
+                                          item,
+                                          initialPositionSeconds: 0,
+                                        ),
+                                        child: const Text('从头看'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: FilledButton(
+                                        onPressed: () => _resumeHistoryEntry(context, entry),
+                                        child: const Text('继续播'),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -754,7 +844,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       vertical: 14,
                                     ),
                                   ),
-                                  onPressed: () => _openDetail(context, item),
+                                  onPressed: () => _playOrResume(context, item),
                                   icon: const Icon(Icons.play_arrow),
                                   label: const Text(''),
                                 ),
@@ -813,9 +903,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 final item = others[index];
                 return _VideoGridCard(
                   item: item,
+                  watchStatusText: _watchStatusText(app.findHistoryForVideo(item)),
                   isFavorite: app.isFavorite(item.id),
                   onFavoriteToggle: () => app.toggleFavorite(item),
-                  onPlay: () => _openDetail(context, item),
+                  onPlay: () => _playOrResume(context, item),
                   onDetail: () => _openDetail(context, item),
                 );
               },
@@ -840,7 +931,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final titled = app.favorites.where((item) => item.title.isNotEmpty).length;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+      padding: EdgeInsets.fromLTRB(12, _rootTopInset, 12, 28),
       children: [
         _LibraryHeroCard(
           title: '我的收藏',
@@ -869,9 +960,10 @@ class _HomeScreenState extends State<HomeScreen> {
             return _VideoGridCard(
               item: item,
               badgeText: '已收藏',
+              watchStatusText: _watchStatusText(app.findHistoryForVideo(item)),
               isFavorite: true,
               onFavoriteToggle: () => app.toggleFavorite(item),
-              onPlay: () => _openDetail(context, item),
+              onPlay: () => _playOrResume(context, item),
               onDetail: () => _openDetail(context, item),
             );
           },
@@ -941,6 +1033,38 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _resumeHistoryEntry(BuildContext context, PlaybackHistoryItem entry) {
+    _playVideo(
+      context,
+      entry.video,
+      initialPositionSeconds: entry.lastPositionSeconds,
+    );
+  }
+
+  void _playOrResume(BuildContext context, VideoItem item) {
+    final historyEntry = AppScope.read(context).findHistoryForVideo(item);
+    if (historyEntry != null && historyEntry.lastPositionSeconds > 0) {
+      _resumeHistoryEntry(context, historyEntry);
+      return;
+    }
+    _playVideo(context, item);
+  }
+
+  void _playVideo(
+    BuildContext context,
+    VideoItem item, {
+    int initialPositionSeconds = 0,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PlayerScreen(
+          item: item,
+          initialPositionSeconds: initialPositionSeconds,
+        ),
+      ),
+    );
+  }
+
   void _syncSelectedSources(AppController app) {
     final enabled = app.sources.where((s) => s.enabled).map((e) => e.id).toSet();
     if (!_sourceSelectionInitialized) {
@@ -954,6 +1078,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onQueryChanged(AppController app) {
     setState(() {});
     _searchDebounce?.cancel();
+    if (_controller.text.trim().isEmpty) {
+      app.clearSearchState();
+      return;
+    }
     _searchDebounce = Timer(const Duration(milliseconds: 320), () {
       if (!mounted) return;
       _doSearch(app);
@@ -963,6 +1091,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _doSearch(AppController app) {
     final query = _controller.text.trim();
     if (query.isEmpty) {
+      app.clearSearchState();
       return;
     }
     app.search(query, sourceIds: _selectedSourceIds);
@@ -975,6 +1104,30 @@ class _HomeScreenState extends State<HomeScreen> {
     final hh = local.hour.toString().padLeft(2, '0');
     final min = local.minute.toString().padLeft(2, '0');
     return '$mm-$dd $hh:$min';
+  }
+
+  String _formatPlaybackProgress(int seconds) {
+    if (seconds <= 0) return '不到 1 秒';
+    if (seconds < 60) return '${seconds}s';
+    final minutes = seconds ~/ 60;
+    if (minutes < 60) return '$minutes 分钟';
+    final hours = minutes ~/ 60;
+    final remainMinutes = minutes % 60;
+    if (remainMinutes == 0) return '$hours 小时';
+    return '$hours 小时 $remainMinutes 分钟';
+  }
+
+  double _watchProgressValue(int seconds) {
+    const baselineSeconds = 45 * 60;
+    if (seconds <= 0) return 0;
+    return (seconds / baselineSeconds).clamp(0.0, 1.0);
+  }
+
+  String? _watchStatusText(PlaybackHistoryItem? entry) {
+    if (entry == null) return null;
+    final seconds = entry.lastPositionSeconds;
+    if (seconds <= 0) return '刚开始';
+    return '已看 ${_formatPlaybackProgress(seconds)}';
   }
 
   String _sourceLabel(AppController app, String sourceId) {
@@ -1160,6 +1313,7 @@ class _VideoGridCard extends StatelessWidget {
     required this.onPlay,
     required this.onDetail,
     this.badgeText,
+    this.watchStatusText,
   });
 
   final VideoItem item;
@@ -1168,6 +1322,7 @@ class _VideoGridCard extends StatelessWidget {
   final VoidCallback onPlay;
   final VoidCallback onDetail;
   final String? badgeText;
+  final String? watchStatusText;
 
   @override
   Widget build(BuildContext context) {
@@ -1235,11 +1390,28 @@ class _VideoGridCard extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              item.description.isEmpty ? '暂无简介' : item.description,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (watchStatusText != null) ...[
+                  Text(
+                    watchStatusText!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                Text(
+                  item.description.isEmpty ? '暂无简介' : item.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ),
           ),
           Padding(
