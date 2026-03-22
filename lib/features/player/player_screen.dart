@@ -745,24 +745,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
 
-    return PopScope<void>(
-      canPop: !_isFullScreen,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _isFullScreen) {
-          _controller?.exitFullScreen();
-        }
-      },
-      child: Scaffold(
-        appBar: _isFullScreen
-            ? null
-            : AppBar(
-                title: ChiTvNavTitle(
-                  eyebrow: widget.seriesTitle?.isNotEmpty == true ? 'Now Playing' : 'Player',
-                  title: widget.seriesTitle?.isNotEmpty == true
-                      ? widget.seriesTitle!
-                      : widget.item.title,
-                ),
-                actions: [
+    return Scaffold(
+      appBar: AppBar(
+        title: ChiTvNavTitle(
+          eyebrow: widget.seriesTitle?.isNotEmpty == true ? 'Now Playing' : 'Player',
+          title: widget.seriesTitle?.isNotEmpty == true
+              ? widget.seriesTitle!
+              : widget.item.title,
+        ),
+        actions: [
                   // Engine badge
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
@@ -818,8 +809,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     tooltip: 'QoS',
                   ),
                 ],
-              ),
-        body: _loading
+      ),
+      body: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
             ? Center(
@@ -848,7 +839,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               )
             : Column(
                 children: [
-                  if (_subtitleStatus != null && !_isFullScreen)
+                  if (_subtitleStatus != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
                       child: Card(
@@ -867,59 +858,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ),
                       ),
                     ),
-                  if (!_isFullScreen)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _PlayerStatusChip(
-                            icon: Icons.skip_next_rounded,
-                            label: app.settings.autoPlayNext ? '自动下一集: 开' : '自动下一集: 关',
-                          ),
-                          _PlayerStatusChip(
-                            icon: Icons.repeat_rounded,
-                            label: app.settings.loopPlayback ? '循环播放: 开' : '循环播放: 关',
-                          ),
-                          _PlayerStatusChip(
-                            icon: Icons.closed_caption_outlined,
-                            label: _activeSubtitleUrl == null
-                                ? (app.settings.subtitleEnabled ? '字幕: 待加载' : '字幕: 关')
-                                : '字幕: 已加载',
-                          ),
-                        ],
-                      ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _PlayerStatusChip(
+                          icon: Icons.skip_next_rounded,
+                          label: app.settings.autoPlayNext ? '自动下一集: 开' : '自动下一集: 关',
+                        ),
+                        _PlayerStatusChip(
+                          icon: Icons.repeat_rounded,
+                          label: app.settings.loopPlayback ? '循环播放: 开' : '循环播放: 关',
+                        ),
+                        _PlayerStatusChip(
+                          icon: Icons.closed_caption_outlined,
+                          label: _activeSubtitleUrl == null
+                              ? (app.settings.subtitleEnabled ? '字幕: 待加载' : '字幕: 关')
+                              : '字幕: 已加载',
+                        ),
+                      ],
                     ),
+                  ),
                   // Player area
                   Expanded(child: Center(child: _buildPlayer(app))),
-                  if (!_isFullScreen)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () => _seekBySeconds(-10),
-                              icon: const Icon(Icons.replay_10_rounded, size: 18),
-                              label: const Text('快退 10 秒'),
-                            ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _seekBySeconds(-10),
+                            icon: const Icon(Icons.replay_10_rounded, size: 18),
+                            label: const Text('快退 10 秒'),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () => _seekBySeconds(10),
-                              icon: const Icon(Icons.forward_10_rounded, size: 18),
-                              label: const Text('快进 10 秒'),
-                            ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _seekBySeconds(10),
+                            icon: const Icon(Icons.forward_10_rounded, size: 18),
+                            label: const Text('快进 10 秒'),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
+                  ),
                   // Episode navigation (prev / next)
-                  if (!_isFullScreen &&
-                      widget.currentEpisodeIndex >= 0 &&
-                      widget.episodes.isNotEmpty)
+                  if (widget.currentEpisodeIndex >= 0 && widget.episodes.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -958,20 +945,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                 ],
               ),
-      ),
     );
   }
 
   Future<void> _toggleFullScreen() async {
     final controller = _controller;
     if (controller == null) return;
-
-    if (controller.isFullScreen || _isFullScreen) {
-      controller.exitFullScreen();
-    } else {
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      controller.enterFullScreen();
-    }
+    controller.toggleFullScreen();
   }
 
   void _handleFullScreenChanged(bool isFullScreen) {
