@@ -94,209 +94,212 @@ class _DetailScreenState extends State<DetailScreen> {
       body: ChiTvBackground(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                    child: Card(
-                      clipBehavior: Clip.antiAlias,
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            height: 260,
-                            width: double.infinity,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                detail.poster.isEmpty
-                                    ? Container(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .surfaceContainer,
-                                      )
-                                    : Image.network(
-                                        detail.poster,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => Container(
+            : CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                      child: Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          children: [
+                            SizedBox(
+                              height: 260,
+                              width: double.infinity,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  detail.poster.isEmpty
+                                      ? Container(
                                           color: Theme.of(context)
                                               .colorScheme
                                               .surfaceContainer,
-                                        ),
-                                      ),
-                                DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        Colors.transparent,
-                                        context.chitvTheme.overlayPanelHeavy,
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  left: 18,
-                                  right: 18,
-                                  bottom: 18,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 5,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(alpha: 0.18),
-                                          borderRadius: BorderRadius.circular(999),
-                                        ),
-                                        child: Text(
-                                          _sourceName(app, detail.sourceId),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
+                                        )
+                                      : Image.network(
+                                          detail.poster,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .surfaceContainer,
                                           ),
                                         ),
+                                  DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Colors.transparent,
+                                          context.chitvTheme.overlayPanelHeavy,
+                                        ],
                                       ),
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        detail.title,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        detail.description.isEmpty ? '暂无简介' : detail.description,
-                                        maxLines: 3,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      if (overviewBadges.isNotEmpty) ...[
-                                        const SizedBox(height: 10),
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
-                                          children: overviewBadges.map((badge) {
-                                            return _EpisodeOverviewBadge(badge: badge);
-                                          }).toList(),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: FilledButton.icon(
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: Colors.white,
-                                      foregroundColor: Colors.black,
                                     ),
-                                    onPressed: () {
-                                      if (canResume) {
+                                  ),
+                                  Positioned(
+                                    left: 18,
+                                    right: 18,
+                                    bottom: 18,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 5,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(alpha: 0.18),
+                                            borderRadius: BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
+                                            _sourceName(app, detail.sourceId),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          detail.title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          detail.description.isEmpty ? '暂无简介' : detail.description,
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        if (overviewBadges.isNotEmpty) ...[
+                                          const SizedBox(height: 10),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: overviewBadges.map((badge) {
+                                              return _EpisodeOverviewBadge(badge: badge);
+                                            }).toList(),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: Colors.black,
+                                      ),
+                                      onPressed: () {
+                                        if (canResume) {
+                                          _openPlayer(
+                                            context,
+                                            detail,
+                                            resumeTarget?.episode,
+                                            resumeTarget?.index ?? -1,
+                                          );
+                                          return;
+                                        }
+                                        if (_episodes.isEmpty) {
+                                          _openPlayer(
+                                            context,
+                                            detail,
+                                            null,
+                                            -1,
+                                            resumeFromHistory: false,
+                                          );
+                                          return;
+                                        }
+                                        final first = _episodes.first;
                                         _openPlayer(
                                           context,
                                           detail,
-                                          resumeTarget?.episode,
-                                          resumeTarget?.index ?? -1,
-                                        );
-                                        return;
-                                      }
-                                      if (_episodes.isEmpty) {
-                                        _openPlayer(
-                                          context,
-                                          detail,
-                                          null,
-                                          -1,
+                                          first,
+                                          0,
                                           resumeFromHistory: false,
                                         );
-                                        return;
-                                      }
-                                      final first = _episodes.first;
-                                      _openPlayer(
-                                        context,
-                                        detail,
-                                        first,
-                                        0,
-                                        resumeFromHistory: false,
-                                      );
-                                    },
-                                    icon: const Icon(Icons.play_arrow, size: 18),
-                                    label: Text(
-                                      canResume
-                                          ? _resumeButtonLabel(resumeEntry, resumeTarget)
-                                          : (_episodes.isEmpty ? '立即播放' : '播放第 1 集'),
+                                      },
+                                      icon: const Icon(Icons.play_arrow, size: 18),
+                                      label: Text(
+                                        canResume
+                                            ? _resumeButtonLabel(resumeEntry, resumeTarget)
+                                            : (_episodes.isEmpty ? '立即播放' : '播放第 1 集'),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: (_loading || _switchingSource)
-                                        ? null
-                                        : () {
-                                            if (canResume) {
-                                              if (_episodes.isEmpty) {
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: (_loading || _switchingSource)
+                                          ? null
+                                          : () {
+                                              if (canResume) {
+                                                if (_episodes.isEmpty) {
+                                                  _openPlayer(
+                                                    context,
+                                                    detail,
+                                                    null,
+                                                    -1,
+                                                    resumeFromHistory: false,
+                                                  );
+                                                  return;
+                                                }
+                                                final first = _episodes.first;
                                                 _openPlayer(
                                                   context,
                                                   detail,
-                                                  null,
-                                                  -1,
+                                                  first,
+                                                  0,
                                                   resumeFromHistory: false,
                                                 );
                                                 return;
                                               }
-                                              final first = _episodes.first;
-                                              _openPlayer(
-                                                context,
-                                                detail,
-                                                first,
-                                                0,
-                                                resumeFromHistory: false,
-                                              );
-                                              return;
-                                            }
-                                            _showSwitchSourceSheet();
-                                          },
-                                    icon: Icon(
-                                      canResume ? Icons.replay_rounded : Icons.swap_horiz,
-                                      size: 18,
+                                              _showSwitchSourceSheet();
+                                            },
+                                      icon: Icon(
+                                        canResume ? Icons.replay_rounded : Icons.swap_horiz,
+                                        size: 18,
+                                      ),
+                                      label: Text(canResume ? '从头播放' : '切换片源'),
                                     ),
-                                    label: Text(canResume ? '从头播放' : '切换片源'),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
                   if (_episodes.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
                                 '剧集列表',
                                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                       fontWeight: FontWeight.w700,
@@ -463,76 +466,85 @@ class _DetailScreenState extends State<DetailScreen> {
                         ),
                       ),
                     ),
-                  Expanded(
-                    child: _episodes.isEmpty
-                        ? GridView.builder(
-                            padding: const EdgeInsets.all(12),
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 280,
-                              mainAxisExtent: 260,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                            ),
-                            itemCount: 1,
-                            itemBuilder: (context, _) {
-                              return _EpisodeGridCard(
-                                title: '立即播放',
-                                imageUrl: detail.poster,
-                                subtitle: '当前资源暂未提供分集信息',
-                                statusText: canResume
-                                    ? _resumeSummaryText(resumeEntry, resumeTarget)
-                                    : '当前资源暂未提供分集信息',
-                                markers: const [],
-                                actionLabel: canResume ? '继续播放' : '立即播放',
-                                onPlay: () => _openPlayer(context, detail, null, -1),
-                                highlight: canResume,
-                              );
-                            },
-                          )
-                        : visibleEpisodes.isEmpty
-                            ? const Center(child: Text('没有匹配的剧集'))
-                            : GridView.builder(
-                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-                                itemCount: visibleEpisodes.length,
-                                gridDelegate:
-                                    const SliverGridDelegateWithMaxCrossAxisExtent(
-                                  maxCrossAxisExtent: 280,
-                                  mainAxisExtent: 260,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                ),
-                                itemBuilder: (context, index) {
-                                  final entry = visibleEpisodes[index];
-                                  final ep = entry.episode;
-                                  return _EpisodeGridCard(
-                                    title: ep.name,
-                                    imageUrl: detail.poster,
-                                    subtitle: '第 ${entry.originalIndex + 1} 集',
-                                    statusText: _episodeStatusText(entry.history),
-                                    markers: _episodeMarkers(
-                                      entry,
-                                      resumeTarget: resumeTarget,
-                                      nextUnwatched: nextUnwatched,
-                                    ),
-                                    progressValue: _episodeProgressValue(entry.history),
-                                    actionLabel: _episodeActionLabel(
-                                      entry,
-                                      resumeTarget: resumeTarget,
-                                      nextUnwatched: nextUnwatched,
-                                    ),
-                                    highlight: canResume &&
-                                        resumeTarget?.index == entry.originalIndex,
-                                    onPlay: () => _openPlayer(
-                                      context,
-                                      detail,
-                                      ep,
-                                      entry.originalIndex,
-                                    ),
-                                  );
-                                },
-                              ),
                   ),
+                  if (_episodes.isEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.all(12),
+                      sliver: SliverGrid(
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 280,
+                          mainAxisExtent: 260,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, _) {
+                            return _EpisodeGridCard(
+                              title: '立即播放',
+                              imageUrl: detail.poster,
+                              subtitle: '当前资源暂未提供分集信息',
+                              statusText: canResume
+                                  ? _resumeSummaryText(resumeEntry, resumeTarget)
+                                  : '当前资源暂未提供分集信息',
+                              markers: const [],
+                              actionLabel: canResume ? '继续播放' : '立即播放',
+                              onPlay: () => _openPlayer(context, detail, null, -1),
+                              highlight: canResume,
+                            );
+                          },
+                          childCount: 1,
+                        ),
+                      ),
+                    )
+                  else if (visibleEpisodes.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: Text('没有匹配的剧集')),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                      sliver: SliverGrid(
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 280,
+                          mainAxisExtent: 260,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final entry = visibleEpisodes[index];
+                            final ep = entry.episode;
+                            return _EpisodeGridCard(
+                              title: ep.name,
+                              imageUrl: detail.poster,
+                              subtitle: '第 ${entry.originalIndex + 1} 集',
+                              statusText: _episodeStatusText(entry.history),
+                              markers: _episodeMarkers(
+                                entry,
+                                resumeTarget: resumeTarget,
+                                nextUnwatched: nextUnwatched,
+                              ),
+                              progressValue: _episodeProgressValue(entry.history),
+                              actionLabel: _episodeActionLabel(
+                                entry,
+                                resumeTarget: resumeTarget,
+                                nextUnwatched: nextUnwatched,
+                              ),
+                              highlight: canResume &&
+                                  resumeTarget?.index == entry.originalIndex,
+                              onPlay: () => _openPlayer(
+                                context,
+                                detail,
+                                ep,
+                                entry.originalIndex,
+                              ),
+                            );
+                          },
+                          childCount: visibleEpisodes.length,
+                        ),
+                      ),
+                    ),
                 ],
               ),
       ),
