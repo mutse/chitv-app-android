@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -9,6 +11,8 @@ import '../../app/app_theme.dart';
 import '../../core/models/ad_filter.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/models/vod_source.dart';
+import '../../core/update/apk_installer.dart';
+import '../../core/update/github_release_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -27,7 +31,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _proxyController;
   late final TextEditingController _hlsProxyController;
   late final TextEditingController _doubanEndpointController;
+  final GithubReleaseService _releaseService = GithubReleaseService();
   String _appVersion = '读取中...';
+  String _currentVersion = '';
+  GithubReleaseInfo? _latestRelease;
+  String _updateStatus = '点击检查 GitHub Releases 最新版本';
+  bool _checkingForUpdate = false;
+  bool _downloadingUpdate = false;
+  double? _downloadProgress;
 
   @override
   void initState() {
@@ -720,6 +731,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: '版本号',
             value: _appVersion,
           ),
+          if (Platform.isAndroid) ...[
+            const Divider(height: 1),
+            _UpdateActionTile(
+              title: '应用更新',
+              subtitle: _buildUpdateSubtitle(),
+              buttonLabel: _downloadingUpdate
+                  ? '下载中'
+                  : _checkingForUpdate
+                  ? '检查中'
+                  : '检查更新',
+              onPressed: _checkingForUpdate || _downloadingUpdate
+                  ? null
+                  : _checkForUpdates,
+              progress: _downloadingUpdate ? _downloadProgress : null,
+            ),
+          ],
           const Divider(height: 1),
           _InfoRow(icon: Icons.person_outline, title: '作者', value: _author),
           const Divider(height: 1),
@@ -752,8 +779,230 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final packageInfo = await PackageInfo.fromPlatform();
     if (!mounted) return;
     setState(() {
+      _currentVersion = packageInfo.version;
       _appVersion = '${packageInfo.version} (${packageInfo.buildNumber})';
     });
+  }
+
+  String _buildUpdateSubtitle() {
+    final release = _latestRelease;
+    if (_downloadingUpdate) {
+      final percent = ((_downloadProgress ?? 0) * 100)
+          .clamp(0, 100)
+          .toStringAsFixed(0);
+      return '正在下载 APK，进度 $percent%';
+    }
+    if (release == null) return _updateStatus;
+    final latestVersion = release.normalizedVersion.isEmpty
+        ? release.tagName
+        : release.normalizedVersion;
+    final comparison = compareSemanticVersion(latestVersion, _currentVersion);
+    if (_currentVersion.isEmpty) {
+      return '最新版本 $latestVersion，$_updateStatus';
+    }
+    if (comparison > 0) {
+      return '发现新版本 $latestVersion，当前 $_currentVersion';
+    }
+    return '当前已是最新版本 $_currentVersion';
+  }
+
+  Future<void> _checkForUpdates() async {
+    setState(() {
+      _checkingForUpdate = true;
+      _updateStatus = '正在检查更新...';
+    });
+
+    try {
+      final release = await _releaseService.fetchLatestRelease();
+      if (!mounted) return;
+      setState(() {
+        _latestRelease = release;
+        _updateStatus = '已获取最新发布信息';
+      });
+
+      final latestVersion = release.normalizedVersion;
+      final hasUpdate =
+          latestVersion.isNotEmpty &&
+          _currentVersion.isNotEmpty &&
+          compareSemanticVersion(latestVersion, _currentVersion) > 0;
+
+      if (hasUpdate) {
+        await _showUpdateDialog(release);
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('当前已经是最新版本')));
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _updateStatus = '检查更新失败';
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('检查更新失败: $error')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _checkingForUpdate = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showUpdateDialog(GithubReleaseInfo release) async {
+    final asset = release.preferredApkAsset;
+    final releaseVersion = release.normalizedVersion.isEmpty
+        ? release.tagName
+        : release.normalizedVersion;
+    final notes = release.body.trim().isEmpty
+        ? '此版本未提供更新说明。'
+        : release.body.trim();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: _dialogShape(),
+          title: Text('发现新版本 $releaseVersion'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '当前版本：${_currentVersion.isEmpty ? _appVersion : _currentVersion}',
+                  ),
+                  const SizedBox(height: 8),
+                  Text('安装包：${asset?.name ?? '未找到 APK 资源'}'),
+                  const SizedBox(height: 12),
+                  Text(
+                    notes,
+                    style: Theme.of(dialogContext).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('稍后'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _openGithubRepo();
+              },
+              child: const Text('打开仓库'),
+            ),
+            FilledButton(
+              onPressed: asset == null
+                  ? null
+                  : () async {
+                      Navigator.pop(dialogContext);
+                      await _downloadAndInstallRelease(release);
+                    },
+              child: const Text('下载并安装'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _downloadAndInstallRelease(GithubReleaseInfo release) async {
+    final asset = release.preferredApkAsset;
+    if (asset == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('最新 Release 中未找到 APK 安装包')));
+      return;
+    }
+
+    setState(() {
+      _downloadingUpdate = true;
+      _downloadProgress = 0;
+      _updateStatus = '开始下载 ${asset.name}';
+    });
+
+    try {
+      final file = await _releaseService.downloadAsset(
+        asset,
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _downloadProgress = progress;
+          });
+        },
+      );
+
+      if (!mounted) return;
+      final installResult = await ApkInstaller.installApk(file.path);
+      if (!mounted) return;
+
+      switch (installResult) {
+        case ApkInstallResult.launched:
+          setState(() {
+            _updateStatus = '安装器已打开，请按系统提示完成安装';
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('安装器已打开')));
+        case ApkInstallResult.permissionRequired:
+          setState(() {
+            _updateStatus = '需要授予“安装未知应用”权限';
+          });
+          await _showInstallPermissionDialog();
+        case ApkInstallResult.failed:
+          throw Exception('系统未能打开安装器');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _updateStatus = '下载安装失败';
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('下载安装失败: $error')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloadingUpdate = false;
+          _downloadProgress = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _showInstallPermissionDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: _dialogShape(),
+          title: const Text('需要安装权限'),
+          content: const Text(
+            '当前系统尚未允许 ChiTV 安装未知来源应用，请在下一页中为本应用开启安装权限后，再返回重新点击“检查更新”或“下载并安装”。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await ApkInstaller.openInstallSettings();
+              },
+              child: const Text('去设置'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _openGithubRepo() async {
@@ -1556,6 +1805,87 @@ class _InfoRow extends StatelessWidget {
       trailing: trailing,
       onTap: onTap,
       onLongPress: onLongPress,
+    );
+  }
+}
+
+class _UpdateActionTile extends StatelessWidget {
+  const _UpdateActionTile({
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    required this.onPressed,
+    this.progress,
+  });
+
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final VoidCallback? onPressed;
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: scheme.surface.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.system_update_alt_rounded,
+                    size: 18,
+                    color: scheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (progress != null) ...[
+              const SizedBox(height: 12),
+              LinearProgressIndicator(value: progress),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonal(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                child: Text(buttonLabel),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
