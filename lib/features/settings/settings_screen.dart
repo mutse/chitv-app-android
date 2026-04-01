@@ -18,7 +18,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static const String _appDescription = 'ChiTV Android 客户端，基于 Flutter 构建，提供聚合搜索、播放与视频源管理能力。';
+  static const String _appDescription =
+      'ChiTV Android 客户端，基于 Flutter 构建，提供聚合搜索、播放与视频源管理能力。';
   static const String _author = 'mutse';
   static const String _githubUrl = 'https://github.com/mutse/chitv-app-android';
 
@@ -68,31 +69,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       children: [
         Card(
-          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.42),
+          color: Theme.of(
+            context,
+          ).colorScheme.primaryContainer.withValues(alpha: 0.42),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.76),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surface.withValues(alpha: 0.76),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     'Settings Overview',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   '偏好与系统配置',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -166,14 +174,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.dns_outlined,
               title: '视频源管理',
               subtitle: '管理聚合搜索与播放所使用的视频源、测速与编辑',
-              stat: '${app.sources.where((source) => source.enabled).length}/${app.sources.length} 已启用',
+              stat:
+                  '${app.sources.where((source) => source.enabled).length}/${app.sources.length} 已启用',
               onTap: () => _openSectionPage(
                 context,
                 title: '视频源管理',
                 subtitle: '维护聚合搜索与播放所需的数据源。',
-                children: [
-                  _buildSourceSection(context, app),
-                ],
+                children: [_buildSourceSection(context, app)],
               ),
             ),
           ],
@@ -191,9 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 context,
                 title: '网络与代理',
                 subtitle: '用于处理代理转发和 HLS 专用代理配置。',
-                children: [
-                  _buildNetworkSection(context, app),
-                ],
+                children: [_buildNetworkSection(context, app)],
               ),
             ),
             _SettingsEntryCard(
@@ -223,9 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 context,
                 title: '关于 ChiTV',
                 subtitle: '版本、作者与仓库信息。',
-                children: [
-                  _buildAboutSection(context),
-                ],
+                children: [_buildAboutSection(context)],
               ),
             ),
           ],
@@ -266,7 +269,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _networkSummary(AppController app) {
     final proxy = app.settings.proxyBaseUrl.trim().isEmpty ? '通用未配' : '通用已配';
-    final hls = app.settings.hlsProxyBaseUrl.trim().isEmpty ? 'HLS 复用' : 'HLS 已配';
+    final hls = app.settings.hlsProxyBaseUrl.trim().isEmpty
+        ? 'HLS 复用'
+        : 'HLS 已配';
     return '$proxy · $hls';
   }
 
@@ -288,9 +293,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   ShapeBorder _dialogShape() {
-    return RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(24),
-    );
+    return RoundedRectangleBorder(borderRadius: BorderRadius.circular(24));
   }
 
   Widget _buildPlayerSection(BuildContext context, AppController app) {
@@ -368,15 +371,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: _subtitleController,
               hintText: 'https://example.com/subtitles.vtt',
               buttonLabel: '保存',
-              onSubmit: () => app.setDefaultSubtitleUrl(_subtitleController.text),
+              onSubmit: () =>
+                  app.setDefaultSubtitleUrl(_subtitleController.text),
             ),
             if (app.settings.recentSubtitleUrls.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
                 '最近使用',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -419,7 +423,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _SettingsActionRow(
               icon: Icons.rule_folder_outlined,
               title: '自定义规则',
-              description: '当前 ${app.settings.adFilters.length} 条规则，可用于过滤 URL 或关键片段。',
+              description:
+                  '当前 ${app.settings.adFilters.length} 条规则，可用于过滤 URL 或关键片段。',
               buttonLabel: '添加规则',
               onPressed: () => _showAddFilterDialog(context),
             ),
@@ -436,7 +441,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     _SettingsToggleActionRow(
                       value: filter.enabled,
-                      onChanged: (value) => app.toggleAdFilter(filter.id, value),
+                      onChanged: (value) =>
+                          app.toggleAdFilter(filter.id, value),
                       title: filter.pattern,
                       description: filter.type.label,
                       buttonIcon: Icons.delete_outline,
@@ -489,7 +495,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: _doubanEndpointController,
               hintText: AppSettings.defaultDoubanHotEndpoint,
               buttonLabel: '保存',
-              onSubmit: () => app.setDoubanHotEndpoint(_doubanEndpointController.text),
+              onSubmit: () =>
+                  app.setDoubanHotEndpoint(_doubanEndpointController.text),
             ),
           ],
         ),
@@ -615,9 +622,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         icon: Icons.monitor_heart_outlined,
         title: '播放质量监控',
         description:
-          '会话:${app.qosSessionCount}  平均启动:${app.qosAvgStartupMs}ms\n'
-          '缓冲:${app.qosBufferEvents}次/${app.qosBufferTotalMs}ms  '
-          '重试:${app.qosRetryCount}  错误:${app.qosErrorCount}',
+            '会话:${app.qosSessionCount}  平均启动:${app.qosAvgStartupMs}ms\n'
+            '缓冲:${app.qosBufferEvents}次/${app.qosBufferTotalMs}ms  '
+            '重试:${app.qosRetryCount}  错误:${app.qosErrorCount}',
         buttonLabel: '重置',
         onPressed: app.resetQosStats,
       ),
@@ -636,7 +643,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: app.probingSources ? null : () => app.refreshSourceSpeeds(),
+                    onPressed: app.probingSources
+                        ? null
+                        : () => app.refreshSourceSpeeds(),
                     icon: const Icon(Icons.speed),
                     label: Text(app.probingSources ? '测速中' : '测速'),
                   ),
@@ -673,15 +682,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 for (var i = 0; i < app.sources.length; i++) ...[
                   _SourceListRow(
                     source: app.sources[i],
-                    latencyText: _formatLatency(app.sourceLatencyMs[app.sources[i].id]),
+                    latencyText: _formatLatency(
+                      app.sourceLatencyMs[app.sources[i].id],
+                    ),
                     onToggleEnabled: (v) =>
                         app.upsertSource(app.sources[i].copyWith(enabled: v)),
-                    onEdit: () => _showSourceEditor(context, source: app.sources[i]),
+                    onEdit: () =>
+                        _showSourceEditor(context, source: app.sources[i]),
                     onDelete: app.sources[i].isDefault
                         ? null
                         : () => app.deleteSource(app.sources[i].id),
                   ),
-                  if (i != app.sources.length - 1) const Divider(height: 1, indent: 14),
+                  if (i != app.sources.length - 1)
+                    const Divider(height: 1, indent: 14),
                 ],
               ],
             ),
@@ -708,11 +721,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _appVersion,
           ),
           const Divider(height: 1),
-          _InfoRow(
-            icon: Icons.person_outline,
-            title: '作者',
-            value: _author,
-          ),
+          _InfoRow(icon: Icons.person_outline, title: '作者', value: _author),
           const Divider(height: 1),
           _InfoRow(
             icon: Icons.code_outlined,
@@ -751,17 +760,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final uri = Uri.parse(_githubUrl);
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (opened || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('无法打开仓库链接')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('无法打开仓库链接')));
   }
 
   Future<void> _copyToClipboard(String text, String message) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _confirmAndRun(
@@ -794,9 +803,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (approved != true) return;
     await onConfirm();
     if (!pageContext.mounted) return;
-    ScaffoldMessenger.of(pageContext).showSnackBar(
-      SnackBar(content: Text('$title 已完成')),
-    );
+    ScaffoldMessenger.of(
+      pageContext,
+    ).showSnackBar(SnackBar(content: Text('$title 已完成')));
   }
 
   Future<void> _showExportDialog(BuildContext context) async {
@@ -811,18 +820,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: const Text('导出配置 JSON'),
           content: SizedBox(
             width: 520,
-            child: SingleChildScrollView(
-              child: SelectableText(json),
-            ),
+            child: SingleChildScrollView(child: SelectableText(json)),
           ),
           actions: [
             TextButton(
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: json));
                 if (!context.mounted) return;
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text('已复制到剪贴板')),
-                );
+                ScaffoldMessenger.of(
+                  ctx,
+                ).showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
               },
               child: const Text('复制'),
             ),
@@ -868,14 +875,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   await app.importConfigurationJson(controller.text.trim());
                   if (!ctx.mounted || !context.mounted) return;
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('配置导入成功')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('配置导入成功')));
                 } catch (e) {
                   if (!ctx.mounted || !context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('导入失败: $e')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('导入失败: $e')));
                 }
               },
               child: const Text('导入'),
@@ -888,7 +895,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     controller.dispose();
   }
 
-  Future<void> _showSourceEditor(BuildContext context, {VodSource? source}) async {
+  Future<void> _showSourceEditor(
+    BuildContext context, {
+    VodSource? source,
+  }) async {
     final app = AppScope.of(context);
     final nameCtrl = TextEditingController(text: source?.name ?? '');
     final urlCtrl = TextEditingController(text: source?.apiUrl ?? '');
@@ -1024,10 +1034,10 @@ class _SectionTitle extends StatelessWidget {
       child: Text(
         text,
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.2,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -1074,8 +1084,8 @@ class _SettingsEntryCard extends StatelessWidget {
                   Text(
                     title,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -1083,21 +1093,16 @@ class _SettingsEntryCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 10),
-            Flexible(
-              child: _SettingsValueBadge(text: stat),
-            ),
+            Flexible(child: _SettingsValueBadge(text: stat)),
             const SizedBox(width: 6),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: scheme.onSurfaceVariant,
-            ),
+            Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
           ],
         ),
       ),
@@ -1106,9 +1111,7 @@ class _SettingsEntryCard extends StatelessWidget {
 }
 
 class _SettingsGroupCard extends StatelessWidget {
-  const _SettingsGroupCard({
-    required this.children,
-  });
+  const _SettingsGroupCard({required this.children});
 
   final List<Widget> children;
 
@@ -1130,9 +1133,7 @@ class _SettingsGroupCard extends StatelessWidget {
 }
 
 class _SettingsValueBadge extends StatelessWidget {
-  const _SettingsValueBadge({
-    required this.text,
-  });
+  const _SettingsValueBadge({required this.text});
 
   final String text;
 
@@ -1153,9 +1154,9 @@ class _SettingsValueBadge extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.right,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: scheme.onSecondaryContainer,
-                fontWeight: FontWeight.w700,
-              ),
+            color: scheme.onSecondaryContainer,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
@@ -1177,12 +1178,7 @@ class _SettingsSectionPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: ChiTvNavTitle(
-          eyebrow: 'Settings',
-          title: title,
-        ),
-      ),
+      appBar: AppBar(title: ChiTvNavTitle(title: title)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 28),
         children: [
@@ -1207,7 +1203,10 @@ class _SettingsSectionPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: scheme.surface.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(999),
@@ -1215,25 +1214,25 @@ class _SettingsSectionPage extends StatelessWidget {
                   child: Text(
                     'Section',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onSurface,
-                        ),
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   title,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        height: 1.35,
-                      ),
+                    color: scheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
                 ),
               ],
             ),
@@ -1265,9 +1264,7 @@ class _SettingsPanel extends StatelessWidget {
       color: scheme.surface.withValues(alpha: 0.96),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
-        side: BorderSide(
-          color: scheme.outlineVariant.withValues(alpha: 0.35),
-        ),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1278,7 +1275,10 @@ class _SettingsPanel extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: scheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(999),
@@ -1286,18 +1286,18 @@ class _SettingsPanel extends StatelessWidget {
                   child: Text(
                     title,
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: scheme.primary,
-                        ),
+                      fontWeight: FontWeight.w700,
+                      color: scheme.primary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        height: 1.35,
-                      ),
+                    color: scheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
                 ),
                 const SizedBox(height: 14),
               ],
@@ -1377,10 +1377,7 @@ class _SettingsPanel extends StatelessWidget {
 }
 
 class _SettingsStatPill extends StatelessWidget {
-  const _SettingsStatPill({
-    required this.icon,
-    required this.label,
-  });
+  const _SettingsStatPill({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -1445,7 +1442,11 @@ class _SourceListRow extends StatelessWidget {
                   color: scheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.cloud_outlined, color: scheme.primary, size: 20),
+                child: Icon(
+                  Icons.cloud_outlined,
+                  color: scheme.primary,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1471,18 +1472,18 @@ class _SourceListRow extends StatelessWidget {
                       runSpacing: 8,
                       children: [
                         _SettingsValueBadge(text: '延迟 $latencyText'),
-                        _SettingsValueBadge(text: source.enabled ? '已启用' : '已停用'),
-                        if (source.isDefault) const _SettingsValueBadge(text: '默认源'),
+                        _SettingsValueBadge(
+                          text: source.enabled ? '已启用' : '已停用',
+                        ),
+                        if (source.isDefault)
+                          const _SettingsValueBadge(text: '默认源'),
                       ],
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Switch(
-                value: source.enabled,
-                onChanged: onToggleEnabled,
-              ),
+              Switch(value: source.enabled, onChanged: onToggleEnabled),
             ],
           ),
           const SizedBox(height: 12),
@@ -1500,7 +1501,9 @@ class _SourceListRow extends StatelessWidget {
                 child: FilledButton.tonalIcon(
                   onPressed: onDelete,
                   icon: Icon(
-                    source.isDefault ? Icons.lock_outline : Icons.delete_outline,
+                    source.isDefault
+                        ? Icons.lock_outline
+                        : Icons.delete_outline,
                     size: 16,
                   ),
                   label: Text(source.isDefault ? '默认源' : '删除'),
@@ -1591,29 +1594,26 @@ class _SettingsFormFieldRow extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
-              Text(
-                description,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Text(description, style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 10),
               if (compact) ...[
                 TextField(
                   controller: controller,
-                  decoration: InputDecoration(
-                    hintText: hintText,
-                  ),
+                  decoration: InputDecoration(hintText: hintText),
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.tonal(
                     onPressed: onSubmit,
-                    style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                    ),
                     child: Text(buttonLabel),
                   ),
                 ),
@@ -1624,15 +1624,15 @@ class _SettingsFormFieldRow extends StatelessWidget {
                     Expanded(
                       child: TextField(
                         controller: controller,
-                        decoration: InputDecoration(
-                          hintText: hintText,
-                        ),
+                        decoration: InputDecoration(hintText: hintText),
                       ),
                     ),
                     const SizedBox(width: 8),
                     FilledButton.tonal(
                       onPressed: onSubmit,
-                      style: FilledButton.styleFrom(minimumSize: const Size(72, 52)),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(72, 52),
+                      ),
                       child: Text(buttonLabel),
                     ),
                   ],
@@ -1693,9 +1693,8 @@ class _SettingsActionRow extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -1712,7 +1711,9 @@ class _SettingsActionRow extends StatelessWidget {
                 width: compact ? double.infinity : null,
                 child: FilledButton.tonal(
                   onPressed: onPressed,
-                  style: FilledButton.styleFrom(minimumSize: const Size(88, 44)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(88, 44),
+                  ),
                   child: Text(buttonLabel),
                 ),
               ),
@@ -1746,11 +1747,7 @@ class _SettingsToggleActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      title: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(description),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1760,10 +1757,7 @@ class _SettingsToggleActionRow extends StatelessWidget {
             tooltip: buttonTooltip,
             icon: Icon(buttonIcon),
           ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-          ),
+          Switch(value: value, onChanged: onChanged),
         ],
       ),
     );

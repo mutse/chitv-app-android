@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final isHomeTab = _tab == 0;
     _syncSelectedSources(app);
 
     if (app.initializing) {
@@ -53,47 +54,37 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         surfaceTintColor: Colors.transparent,
         toolbarHeight: 56,
-        title: const ChiTvNavTitle(
-          eyebrow: 'ChiTV',
-          title: 'Android',
-        ),
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(_largeTitleHeight),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            height: _largeTitleHeight,
-            alignment: Alignment.bottomLeft,
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: Theme.of(context).colorScheme.outlineVariant.withValues(
-                    alpha: 0.12 + ((1 - _largeTitleProgress) * 0.26),
+        title: ChiTvNavTitle(title: isHomeTab ? 'ChiTV' : _tabTitle(_tab)),
+        bottom: isHomeTab
+            ? PreferredSize(
+                preferredSize: Size.fromHeight(_largeTitleHeight),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  height: _largeTitleHeight,
+                  alignment: Alignment.bottomLeft,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Theme.of(context).colorScheme.outlineVariant
+                            .withValues(
+                              alpha: 0.12 + ((1 - _largeTitleProgress) * 0.26),
+                            ),
+                      ),
+                    ),
+                  ),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 120),
+                    opacity: _largeTitleProgress.clamp(0.0, 1.0),
+                    child: ChiTvLargeNavHeader(
+                      title: _tabTitle(_tab),
+                      subtitle: _tabLargeSubtitle(_tab),
+                      progress: _largeTitleProgress,
+                    ),
                   ),
                 ),
-              ),
-            ),
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 120),
-              opacity: _largeTitleProgress.clamp(0.0, 1.0),
-              child: ChiTvLargeNavHeader(
-                title: _tabTitle(_tab),
-                subtitle: _tabLargeSubtitle(_tab),
-                progress: _largeTitleProgress,
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          if (_tab == 0)
-            IconButton(
-              onPressed: () async {
-                await app.loadHomeVideos(sourceIds: _selectedSourceIds);
-                await app.loadDoubanHot();
-              },
-              icon: const Icon(Icons.refresh),
-            ),
-        ],
+              )
+            : null,
       ),
       body: ChiTvBackground(
         child: NotificationListener<ScrollNotification>(
@@ -119,7 +110,10 @@ class _HomeScreenState extends State<HomeScreen> {
               });
             },
             destinations: const [
-              NavigationDestination(icon: Icon(Icons.home_rounded), label: '首页'),
+              NavigationDestination(
+                icon: Icon(Icons.home_rounded),
+                label: '首页',
+              ),
               NavigationDestination(icon: Icon(Icons.search), label: '搜索'),
               NavigationDestination(icon: Icon(Icons.favorite), label: '收藏'),
               NavigationDestination(icon: Icon(Icons.settings), label: '设置'),
@@ -130,8 +124,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  double get _largeTitleHeight => lerpDouble(0, 58, _largeTitleProgress) ?? 58;
-  double get _rootTopInset => lerpDouble(4, 12, _largeTitleProgress) ?? 12;
+  double get _largeTitleHeight =>
+      _tab == 0 ? (lerpDouble(0, 44, _largeTitleProgress) ?? 44) : 0;
+  double get _rootTopInset =>
+      _tab == 0 ? (lerpDouble(4, 8, _largeTitleProgress) ?? 8) : 4;
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical || notification.depth != 0) {
@@ -156,12 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _tabLargeSubtitle(int tab) {
-    return switch (tab) {
-      1 => 'Search',
-      2 => 'Favorites',
-      3 => 'Settings',
-      _ => 'Library',
-    };
+    return '';
   }
 
   Widget _buildHomeTab(BuildContext context) {
@@ -197,8 +188,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     '搜索你想看的内容',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -236,7 +227,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Text('搜索'),
                       ),
@@ -260,8 +253,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text(
                       '最近搜索',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -399,9 +392,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Text(
                 '片源过滤',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
               Text(
@@ -421,7 +414,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         label: const Text('全部'),
                         onSelected: (_) {
                           setState(() {
-                            _selectedSourceIds = enabled.map((e) => e.id).toSet();
+                            _selectedSourceIds = enabled
+                                .map((e) => e.id)
+                                .toSet();
                           });
                           _doSearch(app);
                         },
@@ -499,7 +494,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDoubanStrip(BuildContext context, String label, List<DoubanItem> items) {
+  Widget _buildDoubanStrip(
+    BuildContext context,
+    String label,
+    List<DoubanItem> items,
+  ) {
     return SizedBox(
       height: 132,
       child: ListView(
@@ -520,11 +519,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         width: 34,
                         height: 34,
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
-                          label == '电影' ? Icons.movie_creation_outlined : Icons.tv_outlined,
+                          label == '电影'
+                              ? Icons.movie_creation_outlined
+                              : Icons.tv_outlined,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
@@ -532,11 +535,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text(
                         label,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       const SizedBox(height: 4),
-                      Text('热门推荐', style: Theme.of(context).textTheme.bodySmall),
+                      Text(
+                        '热门推荐',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ],
                   ),
                 ),
@@ -565,18 +571,22 @@ class _HomeScreenState extends State<HomeScreen> {
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 5,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.1),
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: Text(
                                   label,
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -586,8 +596,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               if (item.rate > 0)
                                 Row(
                                   children: [
-                                    const Icon(Icons.star_rounded,
-                                        size: 14, color: Colors.amber),
+                                    const Icon(
+                                      Icons.star_rounded,
+                                      size: 14,
+                                      color: Colors.amber,
+                                    ),
                                     const SizedBox(width: 2),
                                     Text(
                                       item.rate.toStringAsFixed(1),
@@ -605,9 +618,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             item.title,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 6),
                           Text(
@@ -686,12 +698,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                             .colorScheme
                                             .primary
                                             .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(999),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                       ),
                                       child: Text(
                                         '继续观看',
                                         style: TextStyle(
-                                          color: Theme.of(context).colorScheme.primary,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -726,10 +742,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                   borderRadius: BorderRadius.circular(999),
                                   child: LinearProgressIndicator(
                                     minHeight: 6,
-                                    value: _watchProgressValue(entry.lastPositionSeconds),
-                                    backgroundColor: Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest,
+                                    value: _watchProgressValue(
+                                      entry.lastPositionSeconds,
+                                    ),
+                                    backgroundColor: Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceContainerHighest,
                                   ),
                                 ),
                                 const SizedBox(height: 10),
@@ -748,7 +766,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: FilledButton(
-                                        onPressed: () => _resumeHistoryEntry(context, entry),
+                                        onPressed: () =>
+                                            _resumeHistoryEntry(context, entry),
                                         child: const Text('继续播'),
                                       ),
                                     ),
@@ -771,7 +790,8 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 260,
               child: PageView.builder(
                 itemCount: featured.length,
-                onPageChanged: (index) => setState(() => _featuredIndex = index),
+                onPageChanged: (index) =>
+                    setState(() => _featuredIndex = index),
                 itemBuilder: (context, index) {
                   final item = featured[index];
                   return Padding(
@@ -782,12 +802,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         fit: StackFit.expand,
                         children: [
                           item.poster.isEmpty
-                              ? Container(color: Theme.of(context).colorScheme.surfaceContainer)
+                              ? Container(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainer,
+                                )
                               : Image.network(
                                   item.poster,
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => Container(
-                                    color: Theme.of(context).colorScheme.surfaceContainer,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceContainer,
                                   ),
                                 ),
                           DecoratedBox(
@@ -810,7 +836,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(
@@ -903,7 +930,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 final item = others[index];
                 return _VideoGridCard(
                   item: item,
-                  watchStatusText: _watchStatusText(app.findHistoryForVideo(item)),
+                  watchStatusText: _watchStatusText(
+                    app.findHistoryForVideo(item),
+                  ),
                   isFavorite: app.isFavorite(item.id),
                   onFavoriteToggle: () => app.toggleFavorite(item),
                   onPlay: () => _playOrResume(context, item),
@@ -969,9 +998,7 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
         const SizedBox(height: 4),
-        const _LibraryFooterNote(
-          text: '收藏会同步保存在本地，方便你随时继续浏览或播放。',
-        ),
+        const _LibraryFooterNote(text: '收藏会同步保存在本地，方便你随时继续浏览或播放。'),
       ],
     );
   }
@@ -995,7 +1022,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 72,
                   height: 72,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Icon(
@@ -1008,8 +1037,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -1026,11 +1055,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openDetail(BuildContext context, VideoItem item) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => DetailScreen(item: item),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => DetailScreen(item: item)));
   }
 
   void _resumeHistoryEntry(BuildContext context, PlaybackHistoryItem entry) {
@@ -1066,7 +1093,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _syncSelectedSources(AppController app) {
-    final enabled = app.sources.where((s) => s.enabled).map((e) => e.id).toSet();
+    final enabled = app.sources
+        .where((s) => s.enabled)
+        .map((e) => e.id)
+        .toSet();
     if (!_sourceSelectionInitialized) {
       _selectedSourceIds = enabled;
       _sourceSelectionInitialized = true;
@@ -1141,10 +1171,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    required this.subtitle,
-  });
+  const _SectionHeader({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -1158,9 +1185,9 @@ class _SectionHeader extends StatelessWidget {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 2),
           Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
@@ -1197,7 +1224,9 @@ class _LibraryHeroCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(
@@ -1213,11 +1242,14 @@ class _LibraryHeroCard extends StatelessWidget {
                       Text(
                         title,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       const SizedBox(height: 4),
-                      Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
                     ],
                   ),
                 ),
@@ -1227,7 +1259,9 @@ class _LibraryHeroCard extends StatelessWidget {
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: stats.map((stat) => _LibraryStatChip(stat: stat)).toList(),
+              children: stats
+                  .map((stat) => _LibraryStatChip(stat: stat))
+                  .toList(),
             ),
           ],
         ),
@@ -1237,19 +1271,14 @@ class _LibraryHeroCard extends StatelessWidget {
 }
 
 class _LibraryStat {
-  const _LibraryStat({
-    required this.label,
-    required this.value,
-  });
+  const _LibraryStat({required this.label, required this.value});
 
   final String label;
   final String value;
 }
 
 class _LibraryStatChip extends StatelessWidget {
-  const _LibraryStatChip({
-    required this.stat,
-  });
+  const _LibraryStatChip({required this.stat});
 
   final _LibraryStat stat;
 
@@ -1287,9 +1316,7 @@ class _LibraryStatChip extends StatelessWidget {
 }
 
 class _LibraryFooterNote extends StatelessWidget {
-  const _LibraryFooterNote({
-    required this.text,
-  });
+  const _LibraryFooterNote({required this.text});
 
   final String text;
 
@@ -1297,10 +1324,7 @@ class _LibraryFooterNote extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
+      child: Text(text, style: Theme.of(context).textTheme.bodySmall),
     );
   }
 }
@@ -1337,7 +1361,9 @@ class _VideoGridCard extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 item.poster.isEmpty
-                    ? Container(color: Theme.of(context).colorScheme.surfaceContainer)
+                    ? Container(
+                        color: Theme.of(context).colorScheme.surfaceContainer,
+                      )
                     : Image.network(
                         item.poster,
                         fit: BoxFit.cover,
@@ -1349,7 +1375,10 @@ class _VideoGridCard extends StatelessWidget {
                   left: 10,
                   top: 10,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: extra.overlayPanel,
                       borderRadius: BorderRadius.circular(999),
@@ -1373,7 +1402,9 @@ class _VideoGridCard extends StatelessWidget {
                       backgroundColor: Colors.black45,
                       foregroundColor: Colors.white,
                     ),
-                    icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                    icon: Icon(
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                    ),
                   ),
                 ),
               ],

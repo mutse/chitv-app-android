@@ -14,6 +14,8 @@ import '../../core/models/app_settings.dart';
 import '../../core/models/episode_item.dart';
 import '../../core/models/video_item.dart';
 
+enum _PlayerTopAction { playbackPreferences, fullscreen, qos }
+
 /// Video player screen that uses `better_player_plus` wrapping `video_player`
 /// for native HLS (m3u8) playback — mirroring the HLS streaming approach
 /// used by LibreTV's ArtPlayer + HLS.js stack.
@@ -420,7 +422,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Future<void> _resumePlaybackIfNeeded(BetterPlayerController controller) async {
+  Future<void> _resumePlaybackIfNeeded(
+    BetterPlayerController controller,
+  ) async {
     if (_resumeApplied || widget.initialPositionSeconds <= 0) return;
     _resumeApplied = true;
 
@@ -663,7 +667,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   children: [
                     const Text(
                       '播放偏好',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     SwitchListTile(
@@ -701,7 +708,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         await app.setSubtitleEnabled(value);
                         if (!value) {
                           await _disableSubtitles();
-                        } else if (app.settings.defaultSubtitleUrl.trim().isNotEmpty) {
+                        } else if (app.settings.defaultSubtitleUrl
+                            .trim()
+                            .isNotEmpty) {
                           await _applySubtitleUrl(
                             app.settings.defaultSubtitleUrl,
                             rememberOnly: true,
@@ -748,203 +757,204 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: ChiTvNavTitle(
-          eyebrow: widget.seriesTitle?.isNotEmpty == true ? 'Now Playing' : 'Player',
           title: widget.seriesTitle?.isNotEmpty == true
               ? widget.seriesTitle!
               : widget.item.title,
         ),
         actions: [
-                  // Engine badge
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'BetterPlayer',
-                          style: TextStyle(fontSize: 10, color: Colors.blue),
-                        ),
-                      ),
-                    ),
+          IconButton(
+            onPressed: _showSubtitleSheet,
+            icon: const Icon(Icons.closed_caption_outlined),
+            tooltip: '字幕',
+          ),
+          PopupMenuButton<_PlayerTopAction>(
+            tooltip: '更多操作',
+            onSelected: (action) {
+              switch (action) {
+                case _PlayerTopAction.playbackPreferences:
+                  _showPlaybackPreferencesSheet();
+                case _PlayerTopAction.fullscreen:
+                  _toggleFullScreen();
+                case _PlayerTopAction.qos:
+                  setState(() => _showQos = !_showQos);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem<_PlayerTopAction>(
+                value: _PlayerTopAction.playbackPreferences,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.tune_rounded),
+                  title: Text('播放偏好'),
+                ),
+              ),
+              PopupMenuItem<_PlayerTopAction>(
+                value: _PlayerTopAction.fullscreen,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    _isFullScreen
+                        ? Icons.fullscreen_exit_outlined
+                        : Icons.fullscreen_outlined,
                   ),
-                  if (app.settings.subtitleEnabled &&
-                      app.settings.defaultSubtitleUrl.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Center(
-                        child: Text(
-                          _activeSubtitleUrl == null ? '字幕已启用' : '字幕已加载',
-                        ),
-                      ),
-                    ),
-                  IconButton(
-                    onPressed: _showSubtitleSheet,
-                    icon: const Icon(Icons.closed_caption_outlined),
-                    tooltip: '字幕',
+                  title: Text(_isFullScreen ? '退出全屏' : '全屏播放'),
+                ),
+              ),
+              PopupMenuItem<_PlayerTopAction>(
+                value: _PlayerTopAction.qos,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    _showQos ? Icons.query_stats : Icons.query_stats_outlined,
                   ),
-                  IconButton(
-                    onPressed: _showPlaybackPreferencesSheet,
-                    icon: const Icon(Icons.tune_rounded),
-                    tooltip: '播放偏好',
-                  ),
-                  IconButton(
-                    onPressed: _toggleFullScreen,
-                    icon: Icon(
-                      _isFullScreen
-                          ? Icons.fullscreen_exit_outlined
-                          : Icons.fullscreen_outlined,
-                    ),
-                    tooltip: _isFullScreen ? '退出全屏' : '全屏播放',
-                  ),
-                  IconButton(
-                    onPressed: () => setState(() => _showQos = !_showQos),
-                    icon: const Icon(Icons.query_stats),
-                    tooltip: 'QoS',
-                  ),
-                ],
+                  title: Text(_showQos ? '隐藏 QoS' : '显示 QoS'),
+                ),
+              ),
+            ],
+            icon: const Icon(Icons.more_horiz),
+          ),
+        ],
       ),
       body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 14),
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () {
+                        _retry = 0;
+                        _initialize(widget.item.url);
+                      },
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Column(
+              children: [
+                if (_subtitleStatus != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.subtitles_outlined, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(_subtitleStatus!)),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: () {
-                          _retry = 0;
-                          _initialize(widget.item.url);
-                        },
-                        icon: const Icon(Icons.refresh, size: 16),
-                        label: const Text('重试'),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _PlayerStatusChip(
+                        icon: Icons.skip_next_rounded,
+                        label: app.settings.autoPlayNext
+                            ? '自动下一集: 开'
+                            : '自动下一集: 关',
+                      ),
+                      _PlayerStatusChip(
+                        icon: Icons.repeat_rounded,
+                        label: app.settings.loopPlayback
+                            ? '循环播放: 开'
+                            : '循环播放: 关',
+                      ),
+                      _PlayerStatusChip(
+                        icon: Icons.closed_caption_outlined,
+                        label: _activeSubtitleUrl == null
+                            ? (app.settings.subtitleEnabled
+                                  ? '字幕: 待加载'
+                                  : '字幕: 关')
+                            : '字幕: 已加载',
                       ),
                     ],
                   ),
                 ),
-              )
-            : Column(
-                children: [
-                  if (_subtitleStatus != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.subtitles_outlined, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(child: Text(_subtitleStatus!)),
-                            ],
-                          ),
+                // Player area
+                Expanded(child: Center(child: _buildPlayer(app))),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _seekBySeconds(-10),
+                          icon: const Icon(Icons.replay_10_rounded, size: 18),
+                          label: const Text('快退 10 秒'),
                         ),
                       ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _PlayerStatusChip(
-                          icon: Icons.skip_next_rounded,
-                          label: app.settings.autoPlayNext ? '自动下一集: 开' : '自动下一集: 关',
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _seekBySeconds(10),
+                          icon: const Icon(Icons.forward_10_rounded, size: 18),
+                          label: const Text('快进 10 秒'),
                         ),
-                        _PlayerStatusChip(
-                          icon: Icons.repeat_rounded,
-                          label: app.settings.loopPlayback ? '循环播放: 开' : '循环播放: 关',
-                        ),
-                        _PlayerStatusChip(
-                          icon: Icons.closed_caption_outlined,
-                          label: _activeSubtitleUrl == null
-                              ? (app.settings.subtitleEnabled ? '字幕: 待加载' : '字幕: 关')
-                              : '字幕: 已加载',
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  // Player area
-                  Expanded(child: Center(child: _buildPlayer(app))),
+                ),
+                // Episode navigation (prev / next)
+                if (widget.currentEpisodeIndex >= 0 &&
+                    widget.episodes.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     child: Row(
                       children: [
+                        OutlinedButton(
+                          onPressed: widget.currentEpisodeIndex > 0
+                              ? () =>
+                                    _openEpisode(widget.currentEpisodeIndex - 1)
+                              : null,
+                          child: const Text('上一集'),
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _seekBySeconds(-10),
-                            icon: const Icon(Icons.replay_10_rounded, size: 18),
-                            label: const Text('快退 10 秒'),
+                          child: Text(
+                            '第 ${widget.currentEpisodeIndex + 1} / ${widget.episodes.length} 集',
+                            textAlign: TextAlign.center,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _seekBySeconds(10),
-                            icon: const Icon(Icons.forward_10_rounded, size: 18),
-                            label: const Text('快进 10 秒'),
-                          ),
+                        const SizedBox(width: 12),
+                        FilledButton(
+                          onPressed:
+                              widget.currentEpisodeIndex <
+                                  widget.episodes.length - 1
+                              ? () =>
+                                    _openEpisode(widget.currentEpisodeIndex + 1)
+                              : null,
+                          child: const Text('下一集'),
                         ),
                       ],
                     ),
                   ),
-                  // Episode navigation (prev / next)
-                  if (widget.currentEpisodeIndex >= 0 && widget.episodes.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        children: [
-                          OutlinedButton(
-                            onPressed: widget.currentEpisodeIndex > 0
-                                ? () => _openEpisode(
-                                    widget.currentEpisodeIndex - 1,
-                                  )
-                                : null,
-                            child: const Text('上一集'),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              '第 ${widget.currentEpisodeIndex + 1} / ${widget.episodes.length} 集',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          FilledButton(
-                            onPressed:
-                                widget.currentEpisodeIndex <
-                                    widget.episodes.length - 1
-                                ? () => _openEpisode(
-                                    widget.currentEpisodeIndex + 1,
-                                  )
-                                : null,
-                            child: const Text('下一集'),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
+              ],
+            ),
     );
   }
 
@@ -998,7 +1008,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final bounded = Duration(
       milliseconds: target.inMilliseconds.clamp(
         0,
-        duration.inMilliseconds > 0 ? duration.inMilliseconds : target.inMilliseconds,
+        duration.inMilliseconds > 0
+            ? duration.inMilliseconds
+            : target.inMilliseconds,
       ),
     );
 
@@ -1393,10 +1405,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 class _PlayerStatusChip extends StatelessWidget {
-  const _PlayerStatusChip({
-    required this.icon,
-    required this.label,
-  });
+  const _PlayerStatusChip({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -1416,9 +1425,9 @@ class _PlayerStatusChip extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
           ),
         ],
       ),

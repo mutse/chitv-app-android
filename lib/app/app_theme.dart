@@ -23,10 +23,10 @@ class ChiTvTheme extends ThemeExtension<ChiTvTheme> {
   final Color overlayPanelHeavy;
 
   LinearGradient get backgroundGradient => LinearGradient(
-        colors: [backgroundTop, backgroundBottom],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
+    colors: [backgroundTop, backgroundBottom],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
 
   static const light = ChiTvTheme(
     backgroundTop: Color(0xFFF2F5FA),
@@ -81,14 +81,21 @@ class ChiTvTheme extends ThemeExtension<ChiTvTheme> {
 
     return ChiTvTheme(
       backgroundTop: Color.lerp(backgroundTop, other.backgroundTop, t)!,
-      backgroundBottom: Color.lerp(backgroundBottom, other.backgroundBottom, t)!,
+      backgroundBottom: Color.lerp(
+        backgroundBottom,
+        other.backgroundBottom,
+        t,
+      )!,
       cardColor: Color.lerp(cardColor, other.cardColor, t)!,
       surfaceColor: Color.lerp(surfaceColor, other.surfaceColor, t)!,
       strokeColor: Color.lerp(strokeColor, other.strokeColor, t)!,
       overlayScrim: Color.lerp(overlayScrim, other.overlayScrim, t)!,
       overlayPanel: Color.lerp(overlayPanel, other.overlayPanel, t)!,
-      overlayPanelHeavy:
-          Color.lerp(overlayPanelHeavy, other.overlayPanelHeavy, t)!,
+      overlayPanelHeavy: Color.lerp(
+        overlayPanelHeavy,
+        other.overlayPanelHeavy,
+        t,
+      )!,
     );
   }
 }
@@ -100,18 +107,19 @@ extension ChiTvThemeContext on BuildContext {
 ThemeData buildChiTvTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
   const primary = Color(0xFF4EA7FF);
-  final scheme = ColorScheme.fromSeed(
-    seedColor: primary,
-    brightness: brightness,
-  ).copyWith(
-    primary: primary,
-    secondary: const Color(0xFF79B7FF),
-    tertiary: const Color(0xFF8AD8C9),
-    surface: isDark ? const Color(0xFF151D28) : const Color(0xFFFCFDFF),
-    surfaceContainerHighest:
-        isDark ? const Color(0xFF212B39) : const Color(0xFFE6EEF8),
-    outlineVariant: isDark ? const Color(0xFF324052) : const Color(0xFFC8D4E3),
-  );
+  final scheme =
+      ColorScheme.fromSeed(seedColor: primary, brightness: brightness).copyWith(
+        primary: primary,
+        secondary: const Color(0xFF79B7FF),
+        tertiary: const Color(0xFF8AD8C9),
+        surface: isDark ? const Color(0xFF151D28) : const Color(0xFFFCFDFF),
+        surfaceContainerHighest: isDark
+            ? const Color(0xFF212B39)
+            : const Color(0xFFE6EEF8),
+        outlineVariant: isDark
+            ? const Color(0xFF324052)
+            : const Color(0xFFC8D4E3),
+      );
   final extra = isDark ? ChiTvTheme.dark : ChiTvTheme.light;
 
   return ThemeData(
@@ -130,9 +138,7 @@ ThemeData buildChiTvTheme(Brightness brightness) {
       toolbarHeight: 62,
       titleSpacing: 20,
       shape: Border(
-        bottom: BorderSide(
-          color: extra.strokeColor.withValues(alpha: 0.4),
-        ),
+        bottom: BorderSide(color: extra.strokeColor.withValues(alpha: 0.4)),
       ),
       titleTextStyle: TextStyle(
         color: scheme.onSurface,
@@ -202,9 +208,7 @@ ThemeData buildChiTvTheme(Brightness brightness) {
       style: FilledButton.styleFrom(
         backgroundColor: scheme.primary,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         textStyle: const TextStyle(fontWeight: FontWeight.w700),
       ),
@@ -214,9 +218,7 @@ ThemeData buildChiTvTheme(Brightness brightness) {
         backgroundColor: extra.surfaceColor.withValues(alpha: 0.9),
         foregroundColor: scheme.onSurface,
         side: BorderSide(color: extra.strokeColor),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       ),
     ),
@@ -238,11 +240,12 @@ ThemeData buildChiTvTheme(Brightness brightness) {
         );
       }),
     ),
-    textTheme: ThemeData(
-      colorScheme: scheme,
-      brightness: brightness,
-      useMaterial3: true,
-    ).textTheme.apply(
+    textTheme:
+        ThemeData(
+          colorScheme: scheme,
+          brightness: brightness,
+          useMaterial3: true,
+        ).textTheme.apply(
           bodyColor: scheme.onSurface,
           displayColor: scheme.onSurface,
         ),
@@ -250,10 +253,7 @@ ThemeData buildChiTvTheme(Brightness brightness) {
 }
 
 class ChiTvBackground extends StatelessWidget {
-  const ChiTvBackground({
-    super.key,
-    required this.child,
-  });
+  const ChiTvBackground({super.key, required this.child});
 
   final Widget child;
 
@@ -268,39 +268,39 @@ class ChiTvBackground extends StatelessWidget {
 }
 
 class ChiTvNavTitle extends StatelessWidget {
-  const ChiTvNavTitle({
-    super.key,
-    required this.eyebrow,
-    required this.title,
-  });
+  const ChiTvNavTitle({super.key, required this.title, this.eyebrow});
 
-  final String eyebrow;
+  final String? eyebrow;
   final String title;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final hasEyebrow = eyebrow != null && eyebrow!.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          eyebrow,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-              ),
-        ),
-        const SizedBox(height: 1),
+        if (hasEyebrow) ...[
+          Text(
+            eyebrow!,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+            ),
+          ),
+          const SizedBox(height: 1),
+        ],
         Text(
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-              ),
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.2,
+          ),
         ),
       ],
     );
@@ -323,26 +323,27 @@ class ChiTvLargeNavHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final clamped = progress.clamp(0.0, 1.0);
-    final titleScale = 0.92 + (0.08 * clamped);
-    final translateY = 16 * (1 - clamped);
+    final titleScale = 0.95 + (0.05 * clamped);
+    final translateY = 10 * (1 - clamped);
+    final hasSubtitle = subtitle != null && subtitle!.isNotEmpty;
     return Transform.translate(
       offset: Offset(0, translateY),
       child: Opacity(
         opacity: clamped,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              if (subtitle != null && subtitle!.isNotEmpty) ...[
+              if (hasSubtitle) ...[
                 Text(
                   subtitle!,
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.2,
-                      ),
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
                 ),
                 const SizedBox(height: 4),
               ],
@@ -354,12 +355,13 @@ class ChiTvLargeNavHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        color: scheme.onSurface,
-                      ),
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                    color: scheme.onSurface,
+                  ),
                 ),
               ),
+              if (!hasSubtitle) const SizedBox(height: 2),
             ],
           ),
         ),
