@@ -48,6 +48,9 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
+  static const double _defaultPlayerAspectRatio = 16 / 9;
+  static const double _fullscreenCoverThreshold = 0.9;
+
   BetterPlayerController? _controller;
   bool _loading = true;
   String? _error;
@@ -182,10 +185,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final configuration = BetterPlayerConfiguration(
       autoPlay: true,
       looping: loopPlayback,
-      aspectRatio: 16 / 9,
+      aspectRatio: _defaultPlayerAspectRatio,
       fit: BoxFit.contain,
       handleLifecycle: true,
-      autoDetectFullscreenAspectRatio: true,
+      autoDetectFullscreenAspectRatio: false,
       autoDetectFullscreenDeviceOrientation: true,
       allowedScreenSleep: false,
       // Enter fullscreen in landscape, matching LibreTV behavior.
@@ -967,6 +970,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _handleFullScreenChanged(bool isFullScreen) {
     if (!mounted || _isFullScreen == isFullScreen) return;
 
+    _applyFullScreenFit(isFullScreen);
+
     if (!isFullScreen) {
       _restoreSystemUi();
     }
@@ -981,6 +986,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
       SystemUiMode.edgeToEdge,
       overlays: SystemUiOverlay.values,
     );
+  }
+
+  void _applyFullScreenFit(bool isFullScreen) {
+    final controller = _controller;
+    if (controller == null) return;
+
+    final fit = isFullScreen && _shouldUseFullscreenCover(controller)
+        ? BoxFit.cover
+        : BoxFit.contain;
+    controller.setOverriddenFit(fit);
+  }
+
+  bool _shouldUseFullscreenCover(BetterPlayerController controller) {
+    final vp = controller.videoPlayerController;
+    final size = MediaQuery.sizeOf(context);
+    if (vp == null || !vp.value.initialized || size.shortestSide == 0) {
+      return false;
+    }
+
+    final videoAspectRatio = vp.value.aspectRatio;
+    if (videoAspectRatio.isNaN ||
+        videoAspectRatio.isInfinite ||
+        videoAspectRatio <= 0) {
+      return false;
+    }
+
+    final fullscreenAspectRatio = size.longestSide / size.shortestSide;
+    return videoAspectRatio < fullscreenAspectRatio * _fullscreenCoverThreshold;
   }
 
   Widget _buildPlayer(AppController app) {
