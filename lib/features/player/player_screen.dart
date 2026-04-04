@@ -5,6 +5,7 @@ import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
@@ -65,6 +66,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final Map<String, String> _localFilteredManifestCache = <String, String>{};
   bool _resumeApplied = false;
   String? _activeSubtitleUrl;
+  bool _wakelockActive = false;
 
   static const Duration _initializeTimeout = Duration(seconds: 30);
 
@@ -78,6 +80,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _historyTimer?.cancel();
     _persistHistoryPosition();
+    unawaited(_syncWakelock(enabled: false));
     _restoreSystemUi();
     _controller?.dispose();
     super.dispose();
@@ -99,6 +102,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       // Dispose previous controller if exists.
+      unawaited(_syncWakelock(enabled: false));
       _controller?.dispose();
       _controller = null;
 
@@ -146,6 +150,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       app.recordPlaybackSessionStarted(startupMs: _sessionStartupMs);
       setState(() => _loading = false);
 
+      unawaited(_syncWakelockForController(playerController));
       _startHistoryTracking();
       unawaited(app.addHistory(widget.item));
     } catch (e) {
@@ -159,6 +164,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
 
       AppScope.read(context).recordPlaybackError();
+      unawaited(_syncWakelock(enabled: false));
       final msg = e is TimeoutException ? '播放超时，请检查网络或代理配置后重试' : '播放失败: $e';
       setState(() {
         _loading = false;
@@ -349,6 +355,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
       switch (event.betterPlayerEventType) {
         case BetterPlayerEventType.finished:
+          unawaited(_syncWakelock(enabled: false));
           if (!_endHandled) {
             _endHandled = true;
             _playNextIfNeeded();
@@ -364,12 +371,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
           break;
 
         case BetterPlayerEventType.exception:
+          unawaited(_syncWakelock(enabled: false));
           debugPrint('[PlayerScreen] Player error: ${event.parameters}');
           setState(() {});
           break;
 
         case BetterPlayerEventType.play:
+          unawaited(_syncWakelock(enabled: true));
+          setState(() {});
+          break;
+
         case BetterPlayerEventType.pause:
+          unawaited(_syncWakelock(enabled: false));
           setState(() {});
           break;
 
@@ -398,6 +411,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     _openEpisode(nextIndex);
+  }
+
+  Future<void> _syncWakelockForController(
+    BetterPlayerController controller,
+  ) async {
+    final vp = controller.videoPlayerController;
+    final shouldKeepAwake =
+        vp != null && vp.value.initialized && vp.value.isPlaying;
+    await _syncWakelock(enabled: shouldKeepAwake);
+  }
+
+  Future<void> _syncWakelock({required bool enabled}) async {
+    if (_wakelockActive == enabled) return;
+    _wakelockActive = enabled;
+    try {
+      if (enabled) {
+        await WakelockPlus.enable();
+      } else {
+        await WakelockPlus.disable();
+      }
+    } catch (e) {
+      debugPrint('[PlayerScreen] Failed to update wakelock: $e');
+      _wakelockActive = !enabled;
+    }
   }
 
   // ---------------------------------------------------------------------------
