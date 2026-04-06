@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show lerpDouble;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
@@ -25,7 +26,12 @@ class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0;
   int _featuredIndex = 0;
   Set<String> _selectedSourceIds = <String>{};
+  Set<String> _lastEnabledSourceIds = <String>{};
   bool _sourceSelectionInitialized = false;
+  bool _refreshQueued = false;
+  int _handledSourceMutationVersion = 0;
+  int _handledContentMutationVersion = 0;
+  int _handledHomeDisplayMutationVersion = 0;
   Timer? _searchDebounce;
   double _largeTitleProgress = 1;
 
@@ -413,12 +419,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         selected: _selectedSourceIds.length == enabled.length,
                         label: const Text('全部'),
                         onSelected: (_) {
-                          setState(() {
-                            _selectedSourceIds = enabled
-                                .map((e) => e.id)
-                                .toSet();
-                          });
-                          _doSearch(app);
+                          _applySourceSelection(
+                            app,
+                            enabled.map((e) => e.id).toSet(),
+                          );
                         },
                       ),
                     ),
@@ -428,10 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         selected: _selectedSourceIds.isEmpty,
                         label: const Text('无'),
                         onSelected: (_) {
-                          setState(() {
-                            _selectedSourceIds = <String>{};
-                          });
-                          _doSearch(app);
+                          _applySourceSelection(app, <String>{});
                         },
                       ),
                     ),
@@ -449,14 +450,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           label: Text(s.name),
                           onSelected: (selected) {
-                            setState(() {
-                              if (selected) {
-                                _selectedSourceIds.add(s.id);
-                              } else {
-                                _selectedSourceIds.remove(s.id);
-                              }
-                            });
-                            _doSearch(app);
+                            final nextSelected = {..._selectedSourceIds};
+                            if (selected) {
+                              nextSelected.add(s.id);
+                            } else {
+                              nextSelected.remove(s.id);
+                            }
+                            _applySourceSelection(app, nextSelected);
                           },
                         ),
                       );
@@ -1099,10 +1099,33 @@ class _HomeScreenState extends State<HomeScreen> {
         .toSet();
     if (!_sourceSelectionInitialized) {
       _selectedSourceIds = enabled;
+      _lastEnabledSourceIds = enabled;
       _sourceSelectionInitialized = true;
+      _handledSourceMutationVersion = app.sourceMutationVersion;
+      _handledContentMutationVersion = app.contentMutationVersion;
+      _handledHomeDisplayMutationVersion = app.homeDisplayMutationVersion;
       return;
     }
-    _selectedSourceIds = _selectedSourceIds.intersection(enabled);
+
+    final hadAllEnabledSelected = setEquals(
+      _selectedSourceIds,
+      _lastEnabledSourceIds,
+    );
+    final refreshRequest = _consumeRefreshRequest(
+      app,
+      enabled: enabled,
+      hadAllEnabledSelected: hadAllEnabledSelected,
+    );
+
+    _selectedSourceIds = refreshRequest.selectedSourceIds;
+    _lastEnabledSourceIds = enabled;
+
+    if (refreshRequest.shouldRefresh) {
+      _queueContentRefresh(
+        app,
+        refreshDoubanHot: refreshRequest.refreshDoubanHot,
+      );
+    }
   }
 
   void _onQueryChanged(AppController app) {
@@ -1125,6 +1148,65 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     app.search(query, sourceIds: _selectedSourceIds);
+  }
+
+  void _applySourceSelection(AppController app, Set<String> nextSelected) {
+    if (setEquals(_selectedSourceIds, nextSelected)) {
+      return;
+    }
+    setState(() {
+      _selectedSourceIds = nextSelected;
+    });
+    _queueContentRefresh(app);
+  }
+
+  void _queueContentRefresh(
+    AppController app, {
+    bool refreshDoubanHot = false,
+  }) {
+    if (_refreshQueued) return;
+    _refreshQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _refreshQueued = false;
+      if (!mounted) return;
+      await app.loadHomeVideos(sourceIds: _selectedSourceIds);
+      if (refreshDoubanHot) {
+        await app.loadDoubanHot(silent: true);
+      }
+      final query = _controller.text.trim();
+      if (query.isNotEmpty) {
+        await app.search(query, sourceIds: _selectedSourceIds);
+      }
+    });
+  }
+
+  _HomeRefreshRequest _consumeRefreshRequest(
+    AppController app, {
+    required Set<String> enabled,
+    required bool hadAllEnabledSelected,
+  }) {
+    final nextSelected = hadAllEnabledSelected
+        ? enabled
+        : _selectedSourceIds.intersection(enabled);
+    final sourceMutationChanged =
+        app.sourceMutationVersion != _handledSourceMutationVersion;
+    final contentMutationChanged =
+        app.contentMutationVersion != _handledContentMutationVersion;
+    final homeDisplayMutationChanged =
+        app.homeDisplayMutationVersion != _handledHomeDisplayMutationVersion;
+
+    _handledSourceMutationVersion = app.sourceMutationVersion;
+    _handledContentMutationVersion = app.contentMutationVersion;
+    _handledHomeDisplayMutationVersion = app.homeDisplayMutationVersion;
+
+    return _HomeRefreshRequest(
+      selectedSourceIds: nextSelected,
+      shouldRefresh:
+          sourceMutationChanged ||
+          contentMutationChanged ||
+          homeDisplayMutationChanged,
+      refreshDoubanHot: homeDisplayMutationChanged,
+    );
   }
 
   String _formatDateTime(DateTime dt) {
@@ -1195,6 +1277,18 @@ class _SectionHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HomeRefreshRequest {
+  const _HomeRefreshRequest({
+    required this.selectedSourceIds,
+    required this.shouldRefresh,
+    required this.refreshDoubanHot,
+  });
+
+  final Set<String> selectedSourceIds;
+  final bool shouldRefresh;
+  final bool refreshDoubanHot;
 }
 
 class _LibraryHeroCard extends StatelessWidget {

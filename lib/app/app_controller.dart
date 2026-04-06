@@ -20,9 +20,9 @@ class AppController extends ChangeNotifier {
     required LocalStore localStore,
     required VideoRepository repository,
     required DoubanApiClient doubanApi,
-  })  : _localStore = localStore,
-        _repository = repository,
-        _doubanApi = doubanApi;
+  }) : _localStore = localStore,
+       _repository = repository,
+       _doubanApi = doubanApi;
 
   final LocalStore _localStore;
   final VideoRepository _repository;
@@ -52,6 +52,13 @@ class AppController extends ChangeNotifier {
   int qosRetryCount = 0;
   int qosStartupTotalMs = 0;
   int _searchRequestSerial = 0;
+  int _sourceMutationVersion = 0;
+  int _contentMutationVersion = 0;
+  int _homeDisplayMutationVersion = 0;
+
+  int get sourceMutationVersion => _sourceMutationVersion;
+  int get contentMutationVersion => _contentMutationVersion;
+  int get homeDisplayMutationVersion => _homeDisplayMutationVersion;
 
   Future<void> init() async {
     initializing = true;
@@ -189,7 +196,9 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<(VideoItem detail, List<EpisodeItem> episodes)> loadDetail(VideoItem item) async {
+  Future<(VideoItem detail, List<EpisodeItem> episodes)> loadDetail(
+    VideoItem item,
+  ) async {
     try {
       final result = await _repository.fetchDetail(
         sources: sources,
@@ -256,6 +265,8 @@ class AppController extends ChangeNotifier {
 
   Future<void> setAdultFilter(bool enabled) async {
     settings = settings.copyWith(adultFilterEnabled: enabled);
+    _contentMutationVersion += 1;
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSettings(settings);
     notifyListeners();
   }
@@ -290,7 +301,10 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> rememberSubtitleUrl(String url, {bool makeDefault = false}) async {
+  Future<void> rememberSubtitleUrl(
+    String url, {
+    bool makeDefault = false,
+  }) async {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return;
 
@@ -317,9 +331,10 @@ class AppController extends ChangeNotifier {
 
   Future<void> setHlsAdFilterEnabled(bool enabled) async {
     settings = settings.copyWith(hlsAdFilterEnabled: enabled);
+    _contentMutationVersion += 1;
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSettings(settings);
     notifyListeners();
-    unawaited(loadHomeVideos());
   }
 
   Future<void> addAdFilter({
@@ -343,18 +358,20 @@ class AppController extends ChangeNotifier {
     ];
 
     settings = settings.copyWith(adFilters: next);
+    _contentMutationVersion += 1;
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSettings(settings);
     notifyListeners();
-    unawaited(loadHomeVideos());
   }
 
   Future<void> removeAdFilter(String id) async {
     settings = settings.copyWith(
       adFilters: settings.adFilters.where((item) => item.id != id).toList(),
     );
+    _contentMutationVersion += 1;
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSettings(settings);
     notifyListeners();
-    unawaited(loadHomeVideos());
   }
 
   Future<void> toggleAdFilter(String id, bool enabled) async {
@@ -363,13 +380,15 @@ class AppController extends ChangeNotifier {
           .map((item) => item.id == id ? item.copyWith(enabled: enabled) : item)
           .toList(),
     );
+    _contentMutationVersion += 1;
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSettings(settings);
     notifyListeners();
-    unawaited(loadHomeVideos());
   }
 
   Future<void> setProxyBaseUrl(String value) async {
     settings = settings.copyWith(proxyBaseUrl: value.trim());
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSettings(settings);
     notifyListeners();
     unawaited(loadDoubanHot(silent: true));
@@ -378,6 +397,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> setDoubanHotEnabled(bool enabled) async {
     settings = settings.copyWith(doubanHotEnabled: enabled);
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSettings(settings);
     notifyListeners();
     unawaited(loadDoubanHot(silent: true));
@@ -388,6 +408,7 @@ class AppController extends ChangeNotifier {
         ? AppSettings.defaultDoubanHotEndpoint
         : value.trim();
     settings = settings.copyWith(doubanHotEndpoint: endpoint);
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSettings(settings);
     notifyListeners();
     unawaited(loadDoubanHot(silent: true));
@@ -430,6 +451,8 @@ class AppController extends ChangeNotifier {
       next[idx] = source;
       sources = next;
     }
+    _sourceMutationVersion += 1;
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSources(sources);
     await refreshSourceSpeeds(silent: true);
     notifyListeners();
@@ -437,6 +460,8 @@ class AppController extends ChangeNotifier {
 
   Future<void> deleteSource(String sourceId) async {
     sources = sources.where((e) => e.id != sourceId || e.isDefault).toList();
+    _sourceMutationVersion += 1;
+    _homeDisplayMutationVersion += 1;
     await _localStore.saveSources(sources);
     await refreshSourceSpeeds(silent: true);
     notifyListeners();
@@ -458,7 +483,9 @@ class AppController extends ChangeNotifier {
     final decoded = jsonDecode(raw) as Map<String, dynamic>;
 
     final nextSettings = AppSettings.fromJson(
-      Map<String, dynamic>.from(decoded['settings'] as Map? ?? <String, dynamic>{}),
+      Map<String, dynamic>.from(
+        decoded['settings'] as Map? ?? <String, dynamic>{},
+      ),
     );
     final nextSources = (decoded['sources'] as List<dynamic>? ?? const [])
         .map((e) => Map<String, dynamic>.from(e as Map))
@@ -476,7 +503,9 @@ class AppController extends ChangeNotifier {
     settings = nextSettings;
     if (nextSources.isNotEmpty) {
       sources = nextSources;
+      _sourceMutationVersion += 1;
     }
+    _homeDisplayMutationVersion += 1;
     favorites = nextFavorites;
     history = nextHistory;
 
@@ -544,7 +573,10 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _saveSearchHistory(String query) async {
-    final next = [query, ...recentSearches.where((e) => e != query)].take(12).toList();
+    final next = [
+      query,
+      ...recentSearches.where((e) => e != query),
+    ].take(12).toList();
     recentSearches = next;
     await _localStore.saveSearchHistory(next);
   }
