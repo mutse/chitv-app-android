@@ -349,7 +349,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(12, _rootTopInset, 12, 28),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        _rootTopInset,
+        12,
+        _bottomContentInset(context),
+      ),
       children: [
         _LibraryHeroCard(
           title: '搜索结果',

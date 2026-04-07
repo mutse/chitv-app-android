@@ -742,6 +742,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: '版本号',
             value: _appVersion,
           ),
+          const Divider(height: 1),
+          _InfoRow(icon: Icons.person_outline, title: '作者', value: _author),
+          const Divider(height: 1),
+          _InfoRow(
+            icon: Icons.code_outlined,
+            title: 'GitHub 仓库',
+            value: _githubUrl,
+            trailing: const Icon(Icons.open_in_new),
+            onTap: _openGithubRepo,
+            onLongPress: () => _copyToClipboard(_githubUrl, '仓库链接已复制'),
+          ),
           if (Platform.isAndroid) ...[
             const Divider(height: 1),
             _UpdateActionTile(
@@ -758,17 +769,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               progress: _downloadingUpdate ? _downloadProgress : null,
             ),
           ],
-          const Divider(height: 1),
-          _InfoRow(icon: Icons.person_outline, title: '作者', value: _author),
-          const Divider(height: 1),
-          _InfoRow(
-            icon: Icons.code_outlined,
-            title: 'GitHub 仓库',
-            value: _githubUrl,
-            trailing: const Icon(Icons.open_in_new),
-            onTap: _openGithubRepo,
-            onLongPress: () => _copyToClipboard(_githubUrl, '仓库链接已复制'),
-          ),
         ],
       ),
     );

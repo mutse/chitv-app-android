@@ -453,9 +453,9 @@ class AppController extends ChangeNotifier {
     }
     _sourceMutationVersion += 1;
     _homeDisplayMutationVersion += 1;
+    notifyListeners();
     await _localStore.saveSources(sources);
     await refreshSourceSpeeds(silent: true);
-    notifyListeners();
   }
 
   Future<void> deleteSource(String sourceId) async {
