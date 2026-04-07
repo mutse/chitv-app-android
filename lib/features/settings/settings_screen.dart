@@ -22,6 +22,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  static const double _bottomNavHeight = 80;
+  static const double _bottomNavOuterMargin = 12;
+  static const double _bottomContentSpacing = 20;
   static const String _appDescription =
       'ChiTV Android 客户端，基于 Flutter 构建，提供聚合搜索、播放与视频源管理能力。';
   static const String _author = 'mutse';
@@ -77,7 +80,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        8,
+        12,
+        MediaQuery.of(context).padding.bottom +
+            _bottomNavHeight +
+            _bottomNavOuterMargin +
+            _bottomContentSpacing,
+      ),
       children: [
         Card(
           color: Theme.of(

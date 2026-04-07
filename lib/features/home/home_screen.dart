@@ -22,6 +22,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const double _bottomNavHeight = 80;
+  static const double _bottomNavOuterMargin = 12;
+  static const double _bottomContentSpacing = 20;
   final _controller = TextEditingController();
   int _tab = 0;
   int _featuredIndex = 0;
@@ -134,6 +137,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _tab == 0 ? (lerpDouble(0, 44, _largeTitleProgress) ?? 44) : 0;
   double get _rootTopInset =>
       _tab == 0 ? (lerpDouble(4, 8, _largeTitleProgress) ?? 8) : 4;
+
+  double _bottomContentInset(BuildContext context) {
+    return MediaQuery.of(context).padding.bottom +
+        _bottomNavHeight +
+        _bottomNavOuterMargin +
+        _bottomContentSpacing;
+  }
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical || notification.depth != 0) {
@@ -661,7 +671,10 @@ class _HomeScreenState extends State<HomeScreen> {
         await app.loadDoubanHot();
       },
       child: ListView(
-        padding: EdgeInsets.only(top: _rootTopInset, bottom: 28),
+        padding: EdgeInsets.only(
+          top: _rootTopInset,
+          bottom: _bottomContentInset(context),
+        ),
         children: [
           _buildDoubanHotSection(context, app),
           if (app.history.isNotEmpty) ...[
@@ -960,7 +973,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final titled = app.favorites.where((item) => item.title.isNotEmpty).length;
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(12, _rootTopInset, 12, 28),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        _rootTopInset,
+        12,
+        _bottomContentInset(context),
+      ),
       children: [
         _LibraryHeroCard(
           title: '我的收藏',
