@@ -19,6 +19,7 @@ class ChiTvApp extends StatelessWidget {
         builder: (context, _) {
           return MaterialApp(
             title: 'ChiTV',
+            debugShowCheckedModeBanner: false,
             themeMode: _themeModeFrom(controller.settings.appThemeMode),
             theme: buildChiTvTheme(Brightness.light),
             darkTheme: buildChiTvTheme(Brightness.dark),

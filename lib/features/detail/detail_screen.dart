@@ -53,6 +53,8 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final extra = context.chitvTheme;
     final detail = _detail ?? widget.item;
     final visibleEpisodes = _visibleEpisodes(app, detail);
     final resumeEntry = app.findHistoryForVideo(detail);
@@ -131,7 +133,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                         end: Alignment.bottomCenter,
                                         colors: [
                                           Colors.transparent,
-                                          context.chitvTheme.overlayPanelHeavy,
+                                          extra.overlayPanelHeavy,
                                         ],
                                       ),
                                     ),
@@ -173,7 +175,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
                                             color: Colors.white,
-                                            fontSize: 24,
+                                            fontSize: 28,
                                             fontWeight: FontWeight.w800,
                                           ),
                                         ),
@@ -215,10 +217,6 @@ class _DetailScreenState extends State<DetailScreen> {
                                 children: [
                                   Expanded(
                                     child: FilledButton.icon(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: Colors.white,
-                                        foregroundColor: Colors.black,
-                                      ),
                                       onPressed: () {
                                         if (canResume) {
                                           _openPlayer(
@@ -267,6 +265,10 @@ class _DetailScreenState extends State<DetailScreen> {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        backgroundColor: scheme.surface
+                                            .withValues(alpha: 0.74),
+                                      ),
                                       onPressed: (_loading || _switchingSource)
                                           ? null
                                           : () {
@@ -346,11 +348,15 @@ class _DetailScreenState extends State<DetailScreen> {
                                       vertical: 8,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withValues(alpha: 0.08),
+                                      color: scheme.primaryContainer.withValues(
+                                        alpha: 0.74,
+                                      ),
                                       borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: scheme.outlineVariant.withValues(
+                                          alpha: 0.24,
+                                        ),
+                                      ),
                                     ),
                                     child: Row(
                                       children: [
@@ -368,9 +374,14 @@ class _DetailScreenState extends State<DetailScreen> {
                                               resumeEntry,
                                               resumeTarget,
                                             ),
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color:
+                                                      scheme.onPrimaryContainer,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                           ),
                                         ),
                                       ],
@@ -385,11 +396,14 @@ class _DetailScreenState extends State<DetailScreen> {
                                       vertical: 8,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .secondaryContainer
-                                          .withValues(alpha: 0.5),
+                                      color: scheme.secondaryContainer
+                                          .withValues(alpha: 0.62),
                                       borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: scheme.outlineVariant.withValues(
+                                          alpha: 0.24,
+                                        ),
+                                      ),
                                     ),
                                     child: Row(
                                       children: [
@@ -1123,12 +1137,10 @@ class _EpisodeGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final extra = context.chitvTheme;
     return Card(
-      color: highlight
-          ? Theme.of(
-              context,
-            ).colorScheme.primaryContainer.withValues(alpha: 0.45)
-          : null,
+      color: highlight ? scheme.primaryContainer.withValues(alpha: 0.45) : null,
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1149,7 +1161,7 @@ class _EpisodeGridCard extends StatelessWidget {
                         imageUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
-                          color: Theme.of(context).colorScheme.surfaceContainer,
+                          color: scheme.surfaceContainer,
                           alignment: Alignment.center,
                           child: const Icon(Icons.broken_image_outlined),
                         ),
@@ -1157,12 +1169,22 @@ class _EpisodeGridCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
             const SizedBox(height: 6),
             Text(
               statusText,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
+                color: scheme.primary,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1200,6 +1222,11 @@ class _EpisodeGridCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: highlight
+                      ? scheme.primary
+                      : extra.accentColor,
+                ),
                 onPressed: onPlay,
                 icon: const Icon(Icons.play_arrow, size: 16),
                 label: Text(actionLabel),
@@ -1224,9 +1251,10 @@ class _EpisodeSummaryChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: stat.emphasize
-            ? scheme.primary.withValues(alpha: 0.12)
-            : scheme.surfaceContainerHighest,
+            ? scheme.primaryContainer.withValues(alpha: 0.82)
+            : scheme.surfaceContainerHighest.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.2)),
       ),
       child: RichText(
         text: TextSpan(
@@ -1349,24 +1377,38 @@ class _SourceSwitchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              sourceName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                sourceName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: scheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             Text(
               title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(

@@ -91,6 +91,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       children: [
         Card(
+          clipBehavior: Clip.antiAlias,
           color: Theme.of(
             context,
           ).colorScheme.primaryContainer.withValues(alpha: 0.42),
@@ -111,7 +112,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    'Settings Overview',
+                    '系统概览',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -1439,66 +1440,68 @@ class _SettingsSectionPage extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: ChiTvNavTitle(title: title)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 28),
-        children: [
-          Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  scheme.primaryContainer.withValues(alpha: 0.78),
-                  scheme.surfaceContainerHighest.withValues(alpha: 0.92),
-                ],
+      body: ChiTvBackground(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 28),
+          children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    scheme.primaryContainer.withValues(alpha: 0.78),
+                    scheme.surfaceContainerHighest.withValues(alpha: 0.92),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: scheme.outlineVariant.withValues(alpha: 0.4),
+                ),
               ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: scheme.outlineVariant.withValues(alpha: 0.4),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.surface.withValues(alpha: 0.8),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'Section',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.surface.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '设置分区',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurface,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+                  const SizedBox(height: 12),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    height: 1.35,
+                  const SizedBox(height: 8),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.35,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          ...children,
-        ],
+            ...children,
+          ],
+        ),
       ),
     );
   }

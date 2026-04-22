@@ -108,25 +108,42 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: NavigationBar(
-            selectedIndex: _tab,
-            onDestinationSelected: (v) {
-              setState(() {
-                _tab = v;
-                _largeTitleProgress = 1;
-              });
-            },
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home_rounded),
-                label: '首页',
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: Theme.of(
+                context,
+              ).colorScheme.outlineVariant.withValues(alpha: 0.26),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: context.chitvTheme.shadowColor,
+                blurRadius: 24,
+                offset: const Offset(0, 10),
               ),
-              NavigationDestination(icon: Icon(Icons.search), label: '搜索'),
-              NavigationDestination(icon: Icon(Icons.favorite), label: '收藏'),
-              NavigationDestination(icon: Icon(Icons.settings), label: '设置'),
             ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: NavigationBar(
+              selectedIndex: _tab,
+              onDestinationSelected: (v) {
+                setState(() {
+                  _tab = v;
+                  _largeTitleProgress = 1;
+                });
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_rounded),
+                  label: '首页',
+                ),
+                NavigationDestination(icon: Icon(Icons.search), label: '搜索'),
+                NavigationDestination(icon: Icon(Icons.favorite), label: '收藏'),
+                NavigationDestination(icon: Icon(Icons.settings), label: '设置'),
+              ],
+            ),
           ),
         ),
       ),
@@ -696,15 +713,46 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: SizedBox(
                       width: 220,
                       child: Card(
+                        clipBehavior: Clip.antiAlias,
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(24),
                           onTap: () => _resumeHistoryEntry(context, entry),
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (item.poster.isNotEmpty)
+                                Image.network(
+                                  item.poster,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceContainer,
+                                  ),
+                                )
+                              else
+                                Container(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainer,
+                                ),
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      context.chitvTheme.overlayPanel
+                                          .withValues(alpha: 0.08),
+                                      context.chitvTheme.overlayPanelHeavy,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.symmetric(
@@ -712,87 +760,101 @@ class _HomeScreenState extends State<HomeScreen> {
                                         vertical: 5,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary
-                                            .withValues(alpha: 0.12),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.16,
+                                        ),
                                         borderRadius: BorderRadius.circular(
                                           999,
                                         ),
+                                        border: Border.all(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                        ),
                                       ),
-                                      child: Text(
+                                      child: const Text(
                                         '继续观看',
                                         style: TextStyle(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
+                                          color: Colors.white,
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                                const Spacer(),
-                                Text(
-                                  item.title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '已看 ${_formatPlaybackProgress(entry.lastPositionSeconds)}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '观看于 ${_formatDateTime(entry.watchedAt)}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                                const SizedBox(height: 10),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: LinearProgressIndicator(
-                                    minHeight: 6,
-                                    value: _watchProgressValue(
-                                      entry.lastPositionSeconds,
+                                    const Spacer(),
+                                    Text(
+                                      item.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 18,
+                                        color: Colors.white,
+                                      ),
                                     ),
-                                    backgroundColor: Theme.of(
-                                      context,
-                                    ).colorScheme.surfaceContainerHighest,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: FilledButton.tonal(
-                                        onPressed: () => _playVideo(
-                                          context,
-                                          item,
-                                          initialPositionSeconds: 0,
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '已看 ${_formatPlaybackProgress(entry.lastPositionSeconds)}',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '观看于 ${_formatDateTime(entry.watchedAt)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: LinearProgressIndicator(
+                                        minHeight: 6,
+                                        value: _watchProgressValue(
+                                          entry.lastPositionSeconds,
                                         ),
-                                        child: const Text('从头看'),
+                                        backgroundColor: Colors.white
+                                            .withValues(alpha: 0.16),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: FilledButton(
-                                        onPressed: () =>
-                                            _resumeHistoryEntry(context, entry),
-                                        child: const Text('继续播'),
-                                      ),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: FilledButton.tonal(
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: Colors.white
+                                                  .withValues(alpha: 0.16),
+                                              foregroundColor: Colors.white,
+                                            ),
+                                            onPressed: () => _playVideo(
+                                              context,
+                                              item,
+                                              initialPositionSeconds: 0,
+                                            ),
+                                            child: const Text('从头看'),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: FilledButton(
+                                            onPressed: () =>
+                                                _resumeHistoryEntry(
+                                                  context,
+                                                  entry,
+                                                ),
+                                            child: const Text('继续播'),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -850,48 +912,77 @@ class _HomeScreenState extends State<HomeScreen> {
                             left: 14,
                             right: 14,
                             bottom: 14,
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        item.title,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        _sourceLabel(app, item.sourceId),
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: Colors.black,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 14,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.14),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.12,
+                                      ),
                                     ),
                                   ),
-                                  onPressed: () => _playOrResume(context, item),
-                                  icon: const Icon(Icons.play_arrow),
-                                  label: const Text(''),
+                                  child: Text(
+                                    _sourceLabel(app, item.sourceId),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            item.title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          const Text(
+                                            '沉浸式推荐 · 立即继续观看',
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 18,
+                                          vertical: 14,
+                                        ),
+                                      ),
+                                      onPressed: () =>
+                                          _playOrResume(context, item),
+                                      icon: const Icon(Icons.play_arrow),
+                                      label: const Text('播放'),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -1285,17 +1376,42 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 10),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          Container(
+            width: 4,
+            height: 42,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Theme.of(context).colorScheme.primary,
+                  Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.85),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 2),
-          Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1329,7 +1445,9 @@ class _LibraryHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final extra = context.chitvTheme;
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1341,9 +1459,16 @@ class _LibraryHeroCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.1),
+                    gradient: LinearGradient(
+                      colors: [
+                        Theme.of(
+                          context,
+                        ).colorScheme.primary.withValues(alpha: 0.2),
+                        Theme.of(
+                          context,
+                        ).colorScheme.secondary.withValues(alpha: 0.12),
+                      ],
+                    ),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(
@@ -1359,7 +1484,7 @@ class _LibraryHeroCard extends StatelessWidget {
                       Text(
                         title,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -1380,6 +1505,8 @@ class _LibraryHeroCard extends StatelessWidget {
                   .map((stat) => _LibraryStatChip(stat: stat))
                   .toList(),
             ),
+            const SizedBox(height: 6),
+            Divider(color: extra.strokeColor.withValues(alpha: 0.4)),
           ],
         ),
       ),
@@ -1405,7 +1532,12 @@ class _LibraryStatChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.78),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: 0.35),
+        ),
       ),
       child: RichText(
         text: TextSpan(
@@ -1468,6 +1600,7 @@ class _VideoGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final extra = context.chitvTheme;
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -1516,7 +1649,9 @@ class _VideoGridCard extends StatelessWidget {
                   child: IconButton.filledTonal(
                     onPressed: onFavoriteToggle,
                     style: IconButton.styleFrom(
-                      backgroundColor: Colors.black45,
+                      backgroundColor: extra.overlayPanel.withValues(
+                        alpha: 0.74,
+                      ),
                       foregroundColor: Colors.white,
                     ),
                     icon: Icon(
@@ -1524,37 +1659,65 @@ class _VideoGridCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, extra.overlayPanelHeavy],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
+                      child: Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-            child: Text(
-              item.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (watchStatusText != null) ...[
-                  Text(
-                    watchStatusText!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w700,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer.withValues(alpha: 0.72),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      watchStatusText!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 8),
                 ],
                 Text(
-                  item.description.isEmpty ? '暂无简介' : item.description,
+                  item.description.isEmpty ? '打开详情查看更多信息' : item.description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall,
@@ -1570,7 +1733,7 @@ class _VideoGridCard extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: onPlay,
                     icon: const Icon(Icons.play_arrow, size: 16),
-                    label: const Text(''),
+                    label: const Text('播放'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1578,7 +1741,7 @@ class _VideoGridCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onDetail,
                     icon: const Icon(Icons.list, size: 16),
-                    label: const Text(''),
+                    label: const Text('详情'),
                   ),
                 ),
               ],
